@@ -2,11 +2,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { type RepoInfo } from "../api/client";
 import { useConnection } from "../context/ConnectionContext";
+import { useLocalRepo } from "../context/LocalRepoContext";
 import { Card, Mono } from "../components/ui";
 import { CloneModal } from "../components/CloneModal";
 
 export function ReposPage() {
   const { repos, project, selectRepo } = useConnection();
+  const { localEnabled } = useLocalRepo();
   const [cloning, setCloning] = useState<RepoInfo | null>(null);
 
   return (
@@ -15,8 +17,10 @@ export function ReposPage() {
         <p className="font-mono text-xs uppercase tracking-widest text-muted">Repositories</p>
         <h1 className="mt-1 font-display text-2xl font-bold text-ink">{project}</h1>
         <p className="mt-1 text-sm text-muted">
-          {repos.length} repositor{repos.length === 1 ? "y" : "ies"} the token can read. Clone one to work on it
-          locally, or browse it remotely.
+          {repos.length} repositor{repos.length === 1 ? "y" : "ies"} the token can read.{" "}
+          {localEnabled
+            ? "Clone one to work on it locally, or browse it remotely."
+            : "Browse them here. Cloning to your machine is available in the desktop / local app."}
         </p>
       </header>
 
@@ -45,12 +49,14 @@ export function ReposPage() {
               >
                 Browse
               </Link>
-              <button
-                onClick={() => setCloning(r)}
-                className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-hover"
-              >
-                Clone to local
-              </button>
+              {localEnabled && (
+                <button
+                  onClick={() => setCloning(r)}
+                  className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-hover"
+                >
+                  Clone to local
+                </button>
+              )}
             </div>
           </Card>
         ))}
