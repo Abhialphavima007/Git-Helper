@@ -85,45 +85,55 @@ function serializeCookie(
 
 export function cookieSession() {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const secret = process.env.SESSION_SECRET || "dev-only-insecure-secret-change-me";
-    const key = keyFrom(secret);
-    const existing = readCookie(req, COOKIE);
-    const data = existing ? decrypt(existing, key) : {};
+    // Session handling must never crash the request — wrap the whole setup.
+    try {
+      const secret = process.env.SESSION_SECRET || "dev-only-insecure-secret-change-me";
+      const key = keyFrom(secret);
+      const existing = readCookie(req, COOKIE);
+      const data = existing ? decrypt(existing, key) : {};
 
-    let cleared = false;
-    const session = { ...data } as Record<string, unknown> & AppSession;
-    Object.defineProperty(session, "destroy", {
-      enumerable: false,
-      value: (cb?: () => void) => {
-        for (const k of Object.keys(session)) delete (session as Record<string, unknown>)[k];
-        cleared = true;
-        if (cb) cb();
-      },
-    });
-    req.session = session;
+      let cleared = false;
+      const session = { ...data } as Record<string, unknown> & AppSession;
+      Object.defineProperty(session, "destroy", {
+        enumerable: false,
+        value: (cb?: () => void) => {
+          for (const k of Object.keys(session)) delete (session as Record<string, unknown>)[k];
+          cleared = true;
+          if (cb) cb();
+        },
+      });
+      req.session = session;
 
-    // Emit the (re)encrypted cookie right before the response flushes.
-    const secure = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
-    const origEnd = res.end.bind(res);
-    let wrote = false;
-    (res as unknown as { end: (...a: unknown[]) => unknown }).end = (...args: unknown[]) => {
-      if (!wrote && !res.headersSent) {
-        wrote = true;
-        const payload: Record<string, unknown> = {};
-        for (const k of Object.keys(session)) payload[k] = (session as Record<string, unknown>)[k];
-        const hasData = !cleared && Object.keys(payload).length > 0;
+      // Emit the (re)encrypted cookie right before the response flushes.
+      const secure = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+      const origEnd = res.end.bind(res);
+      let wrote = false;
+      (res as unknown as { end: (...a: unknown[]) => unknown }).end = function (...args: unknown[]) {
         try {
-          if (hasData) {
-            res.setHeader("Set-Cookie", serializeCookie(COOKIE, encrypt(JSON.stringify(payload), key), { maxAge: MAX_AGE_S, secure }));
-          } else if (existing) {
-            res.setHeader("Set-Cookie", serializeCookie(COOKIE, "", { maxAge: 0, secure }));
+          if (!wrote && !res.headersSent) {
+            wrote = true;
+            const payload: Record<string, unknown> = {};
+            for (const k of Object.keys(session)) payload[k] = (session as Record<string, unknown>)[k];
+            const hasData = !cleared && Object.keys(payload).length > 0;
+            if (hasData) {
+              res.setHeader("Set-Cookie", serializeCookie(COOKIE, encrypt(JSON.stringify(payload), key), { maxAge: MAX_AGE_S, secure }));
+            } else if (existing) {
+              res.setHeader("Set-Cookie", serializeCookie(COOKIE, "", { maxAge: 0, secure }));
+            }
           }
         } catch {
-          /* headers already sent — nothing we can do */
+          /* never let cookie writing break the response */
         }
+        return (origEnd as (...a: unknown[]) => unknown)(...args);
+      };
+    } catch {
+      // Fall back to a no-op session so routes can still respond.
+      if (!req.session) {
+        const noop = {} as Record<string, unknown> & AppSession;
+        Object.defineProperty(noop, "destroy", { enumerable: false, value: () => {} });
+        req.session = noop;
       }
-      return (origEnd as (...a: unknown[]) => unknown)(...args);
-    };
+    }
 
     next();
   };
