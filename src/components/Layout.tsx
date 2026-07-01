@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useConnection } from "../context/ConnectionContext";
 import { useLocalRepo } from "../context/LocalRepoContext";
@@ -32,23 +32,59 @@ export function Layout({ children }: { children: ReactNode }) {
   const { org, project, me, repos, selectedRepoId, selectRepo, disconnect, connected } = useConnection();
   const { open: localOpen, localEnabled, close: closeLocal } = useLocalRepo();
   const navigate = useNavigate();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const closeDrawer = () => setDrawerOpen(false);
 
   async function onDisconnect() {
+    closeDrawer();
     await disconnect();
     navigate("/", { replace: true });
   }
 
   async function onCloseLocal() {
+    closeDrawer();
     await closeLocal();
     navigate(connected ? "/" : "/local/open", { replace: true });
   }
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
-      <aside className="border-b border-line bg-card lg:border-b-0 lg:border-r">
-        <div className="flex h-full flex-col px-4 py-5">
-          <div className="px-2">
+      {/* Mobile top bar */}
+      <div className="flex items-center justify-between border-b border-line bg-card px-4 py-3 lg:hidden">
+        <span className="font-display text-base font-bold text-ink">Git Helper</span>
+        <button
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open menu"
+          className="rounded-lg border border-line p-2 text-ink hover:bg-paper"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Backdrop for the mobile drawer */}
+      {drawerOpen && <div className="fixed inset-0 z-30 bg-ink/40 lg:hidden" onClick={closeDrawer} aria-hidden />}
+
+      {/* Sidebar: slide-in drawer on mobile, static column on desktop */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-[272px] max-w-[85vw] transform border-r border-line bg-card transition-transform duration-200 lg:static lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 lg:border-b-0 ${
+          drawerOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+      >
+        <div className="flex h-full flex-col overflow-y-auto px-4 py-5">
+          <div className="flex items-center justify-between px-2">
             <span className="font-display text-base font-bold text-ink">Git Helper</span>
+            <button
+              onClick={closeDrawer}
+              aria-label="Close menu"
+              className="rounded-md p-1 text-muted hover:text-ink lg:hidden"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
 
           {/* Local-git section */}
@@ -59,7 +95,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
               <nav className="mt-3 space-y-1">
                 {localNav.map((item) => (
-                  <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
+                  <NavLink key={item.to} to={item.to} end={item.end} className={navClass} onClick={closeDrawer}>
                     {item.label}
                   </NavLink>
                 ))}
@@ -72,7 +108,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="mt-6">
               <div className="px-2">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Azure DevOps</p>
-                <p className="mt-0.5 font-mono text-[11px] text-muted">
+                <p className="mt-0.5 truncate font-mono text-[11px] text-muted">
                   {org} / {project}
                 </p>
               </div>
@@ -92,7 +128,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
               <nav className="mt-2 space-y-1">
                 {azureNav.map((item) => (
-                  <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
+                  <NavLink key={item.to} to={item.to} end={item.end} className={navClass} onClick={closeDrawer}>
                     {item.label}
                   </NavLink>
                 ))}
@@ -103,12 +139,12 @@ export function Layout({ children }: { children: ReactNode }) {
           {/* Footer: add the other mode / sign out */}
           <div className="mt-auto space-y-2 border-t border-line pt-4">
             {!localOpen && localEnabled && (
-              <NavLink to="/local/open" className="block rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-paper hover:text-ink">
+              <NavLink to="/local/open" onClick={closeDrawer} className="block rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-paper hover:text-ink">
                 + Open a local repo
               </NavLink>
             )}
             {!connected && (
-              <NavLink to="/connect" className="block rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-paper hover:text-ink">
+              <NavLink to="/connect" onClick={closeDrawer} className="block rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-paper hover:text-ink">
                 + Connect Azure DevOps
               </NavLink>
             )}
@@ -116,7 +152,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {connected && (
               <div className="px-2 pt-1">
                 <p className="text-xs text-muted">Signed in as</p>
-                <p className="text-sm font-medium text-ink">{me?.name ?? "Unknown user"}</p>
+                <p className="truncate text-sm font-medium text-ink">{me?.name ?? "Unknown user"}</p>
               </div>
             )}
 
@@ -142,9 +178,10 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
+      {/* Main */}
       <div className="flex min-h-screen flex-col">
         <TopProgressBar />
-        <main className="px-6 py-8 lg:px-10">
+        <main className="px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
           <div className="mx-auto max-w-4xl">{children}</div>
         </main>
       </div>

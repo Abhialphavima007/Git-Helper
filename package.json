@@ -9,7 +9,7 @@
     "build": "vite build",
     "build:api": "node scripts/build-api.mjs",
     "build:vercel": "vite build && node scripts/build-api.mjs",
-    "desktop:build": "vite build && node scripts/build-desktop.mjs",
+    "desktop:build": "vite build --outDir desktop/dist --emptyOutDir && node scripts/build-desktop.mjs",
     "preview": "vite preview",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit"

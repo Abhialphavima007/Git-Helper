@@ -5,10 +5,15 @@
 
 const { app, BrowserWindow, shell } = require("electron");
 const path = require("node:path");
+const fs = require("node:fs");
 const { startServer } = require("./server.cjs");
 
-// The built frontend lives in ../dist (repo root). See desktop/README.md.
-const DIST = path.join(__dirname, "..", "dist");
+// The built frontend: desktop/dist when packaged or built here, else the repo
+// root ../dist for a dev run.
+const DIST =
+  [path.join(__dirname, "dist"), path.join(__dirname, "..", "dist")].find((p) =>
+    fs.existsSync(path.join(p, "index.html"))
+  ) || path.join(__dirname, "dist");
 
 async function createWindow() {
   const port = await startServer(DIST, 0);

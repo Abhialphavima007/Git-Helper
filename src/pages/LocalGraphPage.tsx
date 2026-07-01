@@ -154,8 +154,8 @@ export function LocalGraphPage() {
       )}
 
       {rows.length > 0 && (
-        <Card className="overflow-hidden p-0">
-          <div className="flex">
+        <Card className="overflow-x-auto p-0">
+          <div className="flex min-w-[320px]">
             <svg width={graphWidth} height={height} className="shrink-0" role="img" aria-label="Commit graph">
               {rows.map((r, i) => {
                 const top = i * ROW;

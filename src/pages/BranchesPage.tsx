@@ -39,7 +39,7 @@ export function BranchesPage() {
           <h1 className="mt-1 font-display text-2xl font-bold text-ink">{selectedRepo.name}</h1>
         </div>
         <input
-          className="w-56 rounded-lg border border-line bg-card px-3 py-2 text-sm focus-visible:border-accent"
+          className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm focus-visible:border-accent sm:w-56"
           placeholder="Filter branches…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
