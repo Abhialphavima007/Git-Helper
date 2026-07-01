@@ -2,11 +2,13 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useConnection } from "../context/ConnectionContext";
+import { useLocalRepo } from "../context/LocalRepoContext";
 import { ErrorNote, StatusDot } from "../components/ui";
 import { OpenRepoForm } from "../components/OpenRepoForm";
 
 export function ConnectPage() {
   const { applyConnect, connected } = useConnection();
+  const { localEnabled } = useLocalRepo();
   const navigate = useNavigate();
   const [org, setOrg] = useState("");
   const [project, setProject] = useState("");
@@ -142,20 +144,24 @@ export function ConnectPage() {
             Prototype mode · read-only access is enough to explore
           </p>
 
-          {/* Or: work entirely against a local repo on this machine. */}
-          <div className="mt-6 flex items-center gap-3">
-            <span className="h-px flex-1 bg-line" />
-            <span className="text-xs font-medium uppercase tracking-wide text-muted">or</span>
-            <span className="h-px flex-1 bg-line" />
-          </div>
-          <div className="mt-6 rounded-2xl border border-line bg-card p-6 shadow-card">
-            <h2 className="font-display text-lg font-semibold text-ink">Work with a local repository</h2>
-            <p className="mt-1 text-sm text-muted">
-              No token needed. Open a Git folder on this machine to visualise history, stage and commit, and resolve
-              merge conflicts — all in plain language.
-            </p>
-            <OpenRepoForm compact />
-          </div>
+          {/* Or: work entirely against a local repo on this machine (desktop only). */}
+          {localEnabled && (
+            <>
+              <div className="mt-6 flex items-center gap-3">
+                <span className="h-px flex-1 bg-line" />
+                <span className="text-xs font-medium uppercase tracking-wide text-muted">or</span>
+                <span className="h-px flex-1 bg-line" />
+              </div>
+              <div className="mt-6 rounded-2xl border border-line bg-card p-6 shadow-card">
+                <h2 className="font-display text-lg font-semibold text-ink">Work with a local repository</h2>
+                <p className="mt-1 text-sm text-muted">
+                  No token needed. Open a Git folder on this machine to visualise history, stage and commit, and resolve
+                  merge conflicts — all in plain language.
+                </p>
+                <OpenRepoForm compact />
+              </div>
+            </>
+          )}
         </section>
       </div>
     </div>

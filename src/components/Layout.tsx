@@ -30,7 +30,7 @@ function navClass({ isActive }: { isActive: boolean }) {
 
 export function Layout({ children }: { children: ReactNode }) {
   const { org, project, me, repos, selectedRepoId, selectRepo, disconnect, connected } = useConnection();
-  const { open: localOpen, close: closeLocal } = useLocalRepo();
+  const { open: localOpen, localEnabled, close: closeLocal } = useLocalRepo();
   const navigate = useNavigate();
 
   async function onDisconnect() {
@@ -102,7 +102,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
           {/* Footer: add the other mode / sign out */}
           <div className="mt-auto space-y-2 border-t border-line pt-4">
-            {!localOpen && (
+            {!localOpen && localEnabled && (
               <NavLink to="/local/open" className="block rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-paper hover:text-ink">
                 + Open a local repo
               </NavLink>

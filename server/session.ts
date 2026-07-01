@@ -1,17 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
-import type { Connection, IdentityRef } from "./azdo";
 import { AzdoError } from "./azdo";
 import { GitError } from "./git";
-
-// Augment express-session with the data we store server-side.
-declare module "express-session" {
-  interface SessionData {
-    connection?: Connection;
-    me?: IdentityRef;
-    // Local-git mode: the validated work-tree root the developer opened.
-    localRepo?: { root: string; name: string };
-  }
-}
+// Session shape + req.session typing live in cookieSession.ts.
+import "./cookieSession";
 
 // Guard for routes that need an active connection. Attaches it to res.locals.
 export function requireConnection(req: Request, res: Response, next: NextFunction): void {

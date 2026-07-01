@@ -26,9 +26,10 @@ function RequireAzure({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>;
 }
 
-// Gate the local-git screens: needs an open local repository.
+// Gate the local-git screens: needs local mode enabled + an open repository.
 function RequireLocal({ children }: { children: ReactNode }) {
-  const { open } = useLocalRepo();
+  const { open, localEnabled } = useLocalRepo();
+  if (!localEnabled) return <Navigate to="/" replace />;
   if (!open) return <Navigate to="/local/open" replace />;
   return <Layout>{children}</Layout>;
 }
@@ -75,7 +76,17 @@ export default function App() {
       {/* Local git */}
       <Route
         path="/local/open"
-        element={anyMode ? <Layout><OpenRepoPage /></Layout> : <OpenRepoPage />}
+        element={
+          !local.localEnabled ? (
+            <Navigate to="/" replace />
+          ) : anyMode ? (
+            <Layout>
+              <OpenRepoPage />
+            </Layout>
+          ) : (
+            <OpenRepoPage />
+          )
+        }
       />
       <Route path="/local" element={<RequireLocal><LocalStatusPage /></RequireLocal>} />
       <Route path="/local/changes" element={<RequireLocal><LocalChangesPage /></RequireLocal>} />

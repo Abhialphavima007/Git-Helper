@@ -63,10 +63,8 @@ router.get("/connection", (req, res) => {
 
 // POST /api/disconnect
 router.post("/disconnect", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("azdo.sid");
-    res.status(204).end();
-  });
+  req.session.destroy();
+  res.status(204).end();
 });
 
 // GET /api/repos

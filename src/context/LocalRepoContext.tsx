@@ -3,6 +3,7 @@ import { api, type StoredRepo } from "../api/client";
 
 interface LocalRepoContextValue {
   ready: boolean; // finished the initial probe
+  localEnabled: boolean; // false on hosted deployments (desktop-only feature)
   open: boolean; // a repo is currently selected
   root: string | null;
   name: string | null;
@@ -18,15 +19,22 @@ const Ctx = createContext<LocalRepoContextValue | null>(null);
 
 export function LocalRepoProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
+  const [localEnabled, setLocalEnabled] = useState(true);
   const [repos, setRepos] = useState<StoredRepo[]>([]);
   const [current, setCurrent] = useState<{ root: string; name: string } | null>(null);
 
-  // On load, restore the known-repo list and re-select the last opened one so a
-  // cloned repo is always there without cloning again.
+  // On load, check whether local mode is available in this deployment; if so,
+  // restore the known-repo list and re-select the last opened one (so a cloned
+  // repo is always there without cloning again).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        const cfg = await api.getConfig();
+        if (cancelled) return;
+        setLocalEnabled(cfg.localEnabled);
+        if (!cfg.localEnabled) return; // hosted: no local repos
+
         const list = await api.local.listRepos();
         if (cancelled) return;
         setRepos(list.repos);
@@ -41,7 +49,7 @@ export function LocalRepoProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
-        /* nothing stored */
+        /* nothing stored / config unavailable */
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -82,6 +90,7 @@ export function LocalRepoProvider({ children }: { children: ReactNode }) {
   const value = useMemo<LocalRepoContextValue>(
     () => ({
       ready,
+      localEnabled,
       open: !!current,
       root: current?.root ?? null,
       name: current?.name ?? null,
@@ -92,7 +101,7 @@ export function LocalRepoProvider({ children }: { children: ReactNode }) {
       removeRepo,
       close,
     }),
-    [ready, current, repos]
+    [ready, localEnabled, current, repos]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

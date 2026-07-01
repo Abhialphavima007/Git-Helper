@@ -262,6 +262,8 @@ export interface CompareResult {
 // ---- Calls ----
 
 export const api = {
+  getConfig: () => http<{ localEnabled: boolean }>("/api/config"),
+
   getConnection: () => http<ConnectionState>("/api/connection"),
 
   connect: (body: { org: string; project: string; pat: string }) =>

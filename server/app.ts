@@ -1,5 +1,4 @@
 import express from "express";
-import session from "express-session";
 import connectRoutes from "./routes/connect";
 import branchRoutes from "./routes/branches";
 import pullRequestRoutes from "./routes/pullRequests";
@@ -7,35 +6,29 @@ import localRoutes from "./routes/local";
 import cloneRoutes from "./routes/clone";
 import fsRoutes from "./routes/fs";
 import { errorHandler } from "./session";
+import { cookieSession } from "./cookieSession";
+
+// True when running on a shared/cloud host (Vercel sets VERCEL=1). Local-git
+// mode (clone/filesystem/git CLI) is a desktop-only feature and is disabled
+// here — on a server it would operate on the server's disk, which is wrong and
+// a security risk.
+export const IS_HOSTED = process.env.VERCEL === "1" || process.env.HOSTED === "1";
 
 // Builds the Azure DevOps proxy as a single Express app.
-// Used two ways:
-//   - dev:  mounted as Vite middleware (see vite.config.ts)
-//   - prod: mounted in server.ts alongside the static build
-// In both cases the PAT lives only in the server-side session, never in the browser.
+// Used three ways:
+//   - dev:        mounted as Vite middleware (see vite.config.ts)
+//   - prod (node): mounted in server.ts alongside the static build
+//   - serverless: exported as a Vercel function (see api/[...path].ts)
+// The PAT lives only in an encrypted session cookie, never readable by the browser.
 export function createApiApp() {
-  const SESSION_SECRET =
-    process.env.SESSION_SECRET || "dev-only-insecure-secret-change-me";
-
   const app = express();
   app.use(express.json());
-
-  app.use(
-    session({
-      name: "azdo.sid",
-      secret: SESSION_SECRET,
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: false, // set true behind HTTPS in production
-        maxAge: 1000 * 60 * 60 * 8, // 8 hours
-      },
-    })
-  );
+  app.use(cookieSession());
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+  // Tells the client which features are available in this deployment.
+  app.get("/api/config", (_req, res) => res.json({ localEnabled: !IS_HOSTED }));
 
   // Auth / connection / repo listing
   app.use("/api", connectRoutes);
@@ -44,14 +37,12 @@ export function createApiApp() {
   app.use("/api/repos/:repoId", branchRoutes);
   app.use("/api/repos/:repoId/pullrequests", pullRequestRoutes);
 
-  // Local-git mode: operate on a work tree on this machine.
-  app.use("/api/local", localRoutes);
-
-  // Clone an Azure repo to the local machine (bridges remote -> local mode).
-  app.use("/api", cloneRoutes);
-
-  // Local filesystem browsing for the folder picker.
-  app.use("/api/fs", fsRoutes);
+  // Desktop-only local-git features — omitted on hosted deployments.
+  if (!IS_HOSTED) {
+    app.use("/api/local", localRoutes); // status, changes, commit, branches, compare, conflicts
+    app.use("/api", cloneRoutes); // clone an Azure repo to this machine
+    app.use("/api/fs", fsRoutes); // folder picker
+  }
 
   app.use(errorHandler);
 
