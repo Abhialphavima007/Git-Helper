@@ -6,3 +6,5 @@ dist
 .DS_Store
 .claude/
 api/_app.mjs
+desktop/server.cjs
+desktop/node_modules
