@@ -68,10 +68,15 @@ async function request<T>(
   if (!res.ok) {
     throw new AzdoError(res.status, await res.text());
   }
-  // Some endpoints (e.g. a missing project) return an HTML sign-in page with 200.
+  // Azure serves an HTML sign-in page (often 203) when it won't authenticate a
+  // request — a wrong organization, an invalid/expired PAT, or an org access
+  // policy (Conditional Access / IP allow-list) blocking this server.
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
-    throw new AzdoError(res.status, "Expected JSON but received a non-JSON response (check org/project/PAT).");
+    throw new AzdoError(
+      res.status,
+      "Azure DevOps returned a sign-in page instead of data. Check the organization name, that the PAT is valid and has Code (Read), and that no organization policy (Conditional Access / IP restrictions) blocks API access from this server."
+    );
   }
   return (await res.json()) as T;
 }
