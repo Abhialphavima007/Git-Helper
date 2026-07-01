@@ -1,4 +1,5 @@
 import express from "express";
+import type { Request, Response, NextFunction } from "express";
 import connectRoutes from "./routes/connect";
 import branchRoutes from "./routes/branches";
 import pullRequestRoutes from "./routes/pullRequests";
@@ -20,9 +21,48 @@ export const IS_HOSTED = process.env.VERCEL === "1" || process.env.HOSTED === "1
 //   - prod (node): mounted in server.ts alongside the static build
 //   - serverless: exported as a Vercel function (see api/[...path].ts)
 // The PAT lives only in an encrypted session cookie, never readable by the browser.
+// Resilient JSON body parser. Works both when the runtime already parsed the
+// body into req.body (some serverless platforms) and when we get a raw stream
+// (dev / standalone Node). Avoids the empty-POST-body pitfall on Vercel.
+function jsonBody() {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const anyReq = req as unknown as { body?: unknown };
+    if (anyReq.body !== undefined && anyReq.body !== null) {
+      if (typeof anyReq.body === "string") {
+        try {
+          anyReq.body = JSON.parse(anyReq.body);
+        } catch {
+          anyReq.body = {};
+        }
+      }
+      return next();
+    }
+    if (req.method === "GET" || req.method === "HEAD" || req.readableEnded) {
+      anyReq.body = {};
+      return next();
+    }
+    let data = "";
+    req.on("data", (c) => {
+      data += c;
+    });
+    req.on("end", () => {
+      try {
+        anyReq.body = data ? JSON.parse(data) : {};
+      } catch {
+        anyReq.body = {};
+      }
+      next();
+    });
+    req.on("error", () => {
+      anyReq.body = {};
+      next();
+    });
+  };
+}
+
 export function createApiApp() {
   const app = express();
-  app.use(express.json());
+  app.use(jsonBody());
   app.use(cookieSession());
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
