@@ -46,6 +46,28 @@ targeting** — electron-builder does not cross-compile Windows ↔ macOS reliab
 (For a signed/notarized installer, add code-signing certs to the
 `build` config in `package.json`.)
 
+## Troubleshooting
+
+**"This app can't run on your PC"** — the build targeted a different CPU
+architecture. The config pins **x64** (runs on Intel/AMD and on ARM Windows via
+emulation). If you still hit it, do a clean rebuild and clear the Electron
+caches:
+
+```powershell
+echo %PROCESSOR_ARCHITECTURE%   REM AMD64 = x64 (normal), ARM64 = ARM
+
+cd desktop
+rmdir /s /q node_modules release
+rmdir /s /q "%LOCALAPPDATA%\electron\Cache"
+rmdir /s /q "%LOCALAPPDATA%\electron-builder\Cache"
+npm install
+npm run dist
+```
+
+Install with **`release\Git Helper Setup <version>.exe`** (don't run the loose
+`win-unpacked\Git Helper.exe`). If your PC reports `ARM64`, change
+`build.win.target[0].arch` to `["arm64"]` in `package.json` and rebuild.
+
 ## What each person needs on their machine
 
 - **Git** on the PATH — required for all local-git features (clone/commit/push…).

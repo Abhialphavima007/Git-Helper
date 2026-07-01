@@ -18,7 +18,7 @@
     "asar": false,
     "files": ["main.cjs", "server.cjs", "dist/**/*", "package.json"],
     "directories": { "output": "release" },
-    "win": { "target": "nsis" },
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
     "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
     "linux": { "target": "AppImage", "category": "Development" }
