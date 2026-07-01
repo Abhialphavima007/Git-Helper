@@ -84,6 +84,16 @@ export function createApiApp() {
     app.use("/api/fs", fsRoutes); // folder picker
   }
 
+  // Any unmatched /api request → structured JSON 404 (never an opaque HTML 404),
+  // which also makes routing problems obvious.
+  app.use("/api", (req, res) => {
+    res.status(404).json({
+      error: "route_not_found",
+      message: "No matching API route.",
+      detail: `${req.method} ${req.originalUrl}`,
+    });
+  });
+
   app.use(errorHandler);
 
   return app;

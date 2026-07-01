@@ -423,5 +423,7 @@ export const api = {
     fetch: () => http<RepoState>("/api/local/fetch", { method: "POST" }),
     pull: () => http<BranchActionResult>("/api/local/pull", { method: "POST" }),
     push: () => http<RepoState>("/api/local/push", { method: "POST" }),
+
+    openInEditor: () => http<{ ok: boolean }>("/api/local/open-in-editor", { method: "POST" }),
   },
 };

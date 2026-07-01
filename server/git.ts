@@ -136,6 +136,21 @@ export function azureCloneUrl(org: string, project: string, repoName: string): s
   return `https://dev.azure.com/${encodeURIComponent(org)}/${encodeURIComponent(project)}/_git/${encodeURIComponent(repoName)}`;
 }
 
+// Open a folder in VS Code via its `code` CLI. Local/desktop only.
+export function openInEditor(dir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // `code` is a shell script/.cmd, so run through a shell.
+    const child = spawn("code", [dir], { shell: true, detached: true, stdio: "ignore", windowsHide: true });
+    child.on("error", (e) =>
+      reject(new GitError(`Couldn't launch VS Code — is the 'code' command on your PATH? (${e.message})`, null, ""))
+    );
+    child.on("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 function cleanAuthNoise(stderr: string): string {
   const lines = stderr.split(/\r?\n/).filter(Boolean);
   // Surface the most telling line for common failures.

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request } from "express";
-import { resolveRepo, azureAuthArgs } from "../git";
+import { resolveRepo, azureAuthArgs, openInEditor } from "../git";
 import { listRepos, addRepo, setLastOpened, removeRepo } from "../repoStore";
 import {
   getState,
@@ -98,6 +98,16 @@ router.post("/close", (req, res) => {
   req.session.localRepo = undefined;
   res.status(204).end();
 });
+
+// POST /api/local/open-in-editor  -> open the current repo in VS Code
+router.post(
+  "/open-in-editor",
+  requireLocalRepo,
+  asyncRoute(async (_req, res) => {
+    await openInEditor(res.locals.repoRoot as string);
+    res.json({ ok: true });
+  })
+);
 
 // Everything below needs an open repo.
 router.use(requireLocalRepo);

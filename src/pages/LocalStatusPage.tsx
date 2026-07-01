@@ -36,12 +36,26 @@ export function LocalStatusPage() {
             </p>
           )}
         </div>
-        <button
-          onClick={() => query.refetch()}
-          className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-paper"
-        >
-          {query.isFetching ? "Refreshing…" : "Refresh"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              try {
+                await api.local.openInEditor();
+              } catch (e) {
+                alert(e instanceof Error ? e.message : "Couldn't open VS Code.");
+              }
+            }}
+            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-paper"
+          >
+            Open in VS Code
+          </button>
+          <button
+            onClick={() => query.refetch()}
+            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-paper"
+          >
+            {query.isFetching ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
       </header>
 
       {query.isLoading && <Spinner label="Reading the working tree…" />}
