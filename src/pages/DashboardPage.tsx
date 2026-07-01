@@ -50,6 +50,16 @@ export function DashboardPage() {
       {branchesQuery.isLoading && <Spinner label="Reading branch status…" />}
       {branchesQuery.isError && <ErrorNote error={branchesQuery.error} />}
 
+      {data && data.branches.length === 0 && (
+        <Card className="p-8 text-center">
+          <h2 className="font-display text-lg font-semibold text-ink">No branches yet</h2>
+          <p className="mt-2 text-sm text-muted">
+            <span className="font-medium text-ink">{selectedRepo.name}</span> has no commits yet — it's an empty
+            repository. Pick another repository from the sidebar, or push an initial commit to get started.
+          </p>
+        </Card>
+      )}
+
       {data && branch && (
         <>
           <div className="flex flex-wrap items-center gap-2">

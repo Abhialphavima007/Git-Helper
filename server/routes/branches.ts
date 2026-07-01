@@ -1,8 +1,21 @@
 import { Router } from "express";
 import type { Connection, GitBranchStat, GitCommitRef, GitRepository, ListResponse } from "../azdo";
-import { gitGet } from "../azdo";
+import { gitGet, AzdoError } from "../azdo";
 import { asyncRoute, requireConnection } from "../session";
 import { mapBranch, shortRef } from "../util";
+
+const EMPTY_LIST: ListResponse<never> = { count: 0, value: [] };
+
+// Azure returns 404 from stats/branches and commits for an empty (no-commit)
+// repository. Treat that as "no branches / no commits" instead of an error.
+async function tolerate404<T>(p: Promise<ListResponse<T>>): Promise<ListResponse<T>> {
+  try {
+    return await p;
+  } catch (e) {
+    if (e instanceof AzdoError && e.status === 404) return EMPTY_LIST as ListResponse<T>;
+    throw e;
+  }
+}
 
 // mergeParams so :repoId from the parent mount is available here.
 const router = Router({ mergeParams: true });
@@ -19,7 +32,7 @@ router.get(
 
     const [repo, stats] = await Promise.all([
       gitGet<GitRepository>(c, `/repositories/${encodeURIComponent(repoId)}`),
-      gitGet<ListResponse<GitBranchStat>>(c, `/repositories/${encodeURIComponent(repoId)}/stats/branches`),
+      tolerate404(gitGet<ListResponse<GitBranchStat>>(c, `/repositories/${encodeURIComponent(repoId)}/stats/branches`)),
     ]);
 
     const branches = stats.value.map(mapBranch).sort((a, b) => {
@@ -55,10 +68,8 @@ router.get(
       query["searchCriteria.itemVersion.versionType"] = "branch";
     }
 
-    const commits = await gitGet<ListResponse<GitCommitRef>>(
-      c,
-      `/repositories/${encodeURIComponent(repoId)}/commits`,
-      query
+    const commits = await tolerate404(
+      gitGet<ListResponse<GitCommitRef>>(c, `/repositories/${encodeURIComponent(repoId)}/commits`, query)
     );
 
     res.json(
