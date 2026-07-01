@@ -9,6 +9,7 @@ import { BranchesPage } from "./pages/BranchesPage";
 import { PullRequestsPage } from "./pages/PullRequestsPage";
 import { PullRequestDetailPage } from "./pages/PullRequestDetailPage";
 import { ReposPage } from "./pages/ReposPage";
+import { AzureComparePage } from "./pages/AzureComparePage";
 import { OpenRepoPage } from "./pages/OpenRepoPage";
 import { LocalStatusPage } from "./pages/LocalStatusPage";
 import { LocalChangesPage } from "./pages/LocalChangesPage";
@@ -70,6 +71,7 @@ export default function App() {
       {/* Azure DevOps (remote) */}
       <Route path="/repos" element={<RequireAzure><ReposPage /></RequireAzure>} />
       <Route path="/branches" element={<RequireAzure><BranchesPage /></RequireAzure>} />
+      <Route path="/compare" element={<RequireAzure><AzureComparePage /></RequireAzure>} />
       <Route path="/pulls" element={<RequireAzure><PullRequestsPage /></RequireAzure>} />
       <Route path="/pulls/:prId" element={<RequireAzure><PullRequestDetailPage /></RequireAzure>} />
 

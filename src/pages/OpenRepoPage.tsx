@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { timeAgo } from "../lib/git";
 import { Card, Mono } from "../components/ui";
@@ -55,6 +56,20 @@ export function OpenRepoPage() {
                   className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
                 >
                   Open
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await api.local.openInEditor(r.root);
+                    } catch (e) {
+                      alert(e instanceof Error ? e.message : "Couldn't open VS Code.");
+                    }
+                  }}
+                  disabled={busy}
+                  title="Open this repo in VS Code"
+                  className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-paper"
+                >
+                  VS Code
                 </button>
                 <button
                   onClick={() => removeRepo(r.root)}

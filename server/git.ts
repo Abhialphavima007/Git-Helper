@@ -139,8 +139,10 @@ export function azureCloneUrl(org: string, project: string, repoName: string): s
 // Open a folder in VS Code via its `code` CLI. Local/desktop only.
 export function openInEditor(dir: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    // `code` is a shell script/.cmd, so run through a shell.
-    const child = spawn("code", [dir], { shell: true, detached: true, stdio: "ignore", windowsHide: true });
+    // `code` is a shell script/.cmd, so run through a shell. Quote the path so
+    // folders with spaces (e.g. "PREXA - CTS") open as one folder, not as
+    // several empty files.
+    const child = spawn(`code "${dir}"`, { shell: true, detached: true, stdio: "ignore", windowsHide: true });
     child.on("error", (e) =>
       reject(new GitError(`Couldn't launch VS Code — is the 'code' command on your PATH? (${e.message})`, null, ""))
     );

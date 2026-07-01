@@ -19,6 +19,7 @@ const azureNav = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/repos", label: "Repositories", end: false },
   { to: "/branches", label: "Branches", end: false },
+  { to: "/compare", label: "Compare branches", end: false },
   { to: "/pulls", label: "Pull requests", end: false },
 ];
 

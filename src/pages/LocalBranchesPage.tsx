@@ -155,8 +155,8 @@ function BranchRow({
 }) {
   const { root } = useLocalRepo();
   const commitsQuery = useQuery({
-    queryKey: ["branch-commits", root, branch.name],
-    queryFn: () => api.local.branchCommits(branch.name),
+    queryKey: ["branch-commits", root, branch.ref],
+    queryFn: () => api.local.branchCommits(branch.ref),
     enabled: expanded,
   });
 
@@ -173,6 +173,11 @@ function BranchRow({
             {isCurrent && (
               <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-accent">
                 current
+              </span>
+            )}
+            {branch.isRemote && (
+              <span className="rounded bg-line px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted">
+                remote
               </span>
             )}
           </div>
@@ -193,19 +198,25 @@ function BranchRow({
             )}
           </p>
         </div>
-        <div className="flex shrink-0 gap-2">
-          {!isCurrent && (
-            <>
-              <button className={btn} disabled={busy} onClick={onSwitch}>
-                Switch
-              </button>
-              <button className={btn} disabled={busy} onClick={onMerge}>
-                Merge into current
-              </button>
-              <button className={btn} disabled={busy} onClick={onDelete}>
-                Delete
-              </button>
-            </>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {branch.isRemote ? (
+            <button className={btn} disabled={busy} onClick={onSwitch}>
+              Check out
+            </button>
+          ) : (
+            !isCurrent && (
+              <>
+                <button className={btn} disabled={busy} onClick={onSwitch}>
+                  Switch
+                </button>
+                <button className={btn} disabled={busy} onClick={onMerge}>
+                  Merge into current
+                </button>
+                <button className={btn} disabled={busy} onClick={onDelete}>
+                  Delete
+                </button>
+              </>
+            )
           )}
         </div>
       </div>

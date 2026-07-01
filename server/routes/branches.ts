@@ -52,6 +52,52 @@ router.get(
   })
 );
 
+// GET /api/repos/:repoId/compare?base=main&target=feature
+// Diff between two branches on the server (ahead/behind + changed files), to
+// preview a merge before opening a PR and avoid surprise conflicts.
+interface AzdoDiff {
+  aheadCount?: number;
+  behindCount?: number;
+  commonCommit?: string;
+  changes?: Array<{ item?: { path?: string; isFolder?: boolean }; changeType?: string }>;
+}
+
+router.get(
+  "/compare",
+  asyncRoute(async (req, res) => {
+    const c = res.locals.connection as Connection;
+    const { repoId } = req.params;
+    const base = typeof req.query.base === "string" ? req.query.base : "";
+    const target = typeof req.query.target === "string" ? req.query.target : "";
+    if (!base || !target) {
+      res.status(400).json({ error: "missing_refs", message: "A base and a target branch are required." });
+      return;
+    }
+
+    const diff = await gitGet<AzdoDiff>(c, `/repositories/${encodeURIComponent(repoId)}/diffs/commits`, {
+      baseVersion: base,
+      baseVersionType: "branch",
+      targetVersion: target,
+      targetVersionType: "branch",
+      "$top": 200,
+      diffCommonCommit: true,
+    });
+
+    const files = (diff.changes || [])
+      .filter((ch) => ch.item && ch.item.path && !ch.item.isFolder)
+      .map((ch) => ({ path: ch.item!.path as string, changeType: ch.changeType || "edit" }));
+
+    res.json({
+      base,
+      target,
+      ahead: diff.aheadCount ?? 0,
+      behind: diff.behindCount ?? 0,
+      commonCommit: diff.commonCommit ? diff.commonCommit.slice(0, 8) : null,
+      files,
+    });
+  })
+);
+
 // GET /api/repos/:repoId/commits?branch=NAME&top=20
 // Recent commits on a branch, for the schematic commit graph.
 router.get(

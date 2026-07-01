@@ -141,11 +141,27 @@ export interface RepoState {
 
 export interface LocalBranch {
   name: string;
+  ref: string;
   current: boolean;
+  isRemote: boolean;
   upstream: string | null;
   ahead: number;
   behind: number;
   lastCommit: { id: string; message: string; date: string | null } | null;
+}
+
+export interface AzureCompareFile {
+  path: string;
+  changeType: string;
+}
+
+export interface AzureCompareResult {
+  base: string;
+  target: string;
+  ahead: number;
+  behind: number;
+  commonCommit: string | null;
+  files: AzureCompareFile[];
 }
 
 export interface GraphCommit {
@@ -296,6 +312,11 @@ export const api = {
       `/api/repos/${encodeURIComponent(repoId)}/pullrequests/${prId}/threads`
     ),
 
+  compareAzure: (repoId: string, base: string, target: string) =>
+    http<AzureCompareResult>(
+      `/api/repos/${encodeURIComponent(repoId)}/compare?base=${encodeURIComponent(base)}&target=${encodeURIComponent(target)}`
+    ),
+
   createPullRequest: (
     repoId: string,
     body: { source: string; target: string; title: string; description?: string }
@@ -424,6 +445,10 @@ export const api = {
     pull: () => http<BranchActionResult>("/api/local/pull", { method: "POST" }),
     push: () => http<RepoState>("/api/local/push", { method: "POST" }),
 
-    openInEditor: () => http<{ ok: boolean }>("/api/local/open-in-editor", { method: "POST" }),
+    openInEditor: (root?: string) =>
+      http<{ ok: boolean }>("/api/local/open-in-editor", {
+        method: "POST",
+        body: JSON.stringify(root ? { root } : {}),
+      }),
   },
 };

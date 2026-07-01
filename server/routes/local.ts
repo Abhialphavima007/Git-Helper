@@ -99,12 +99,27 @@ router.post("/close", (req, res) => {
   res.status(204).end();
 });
 
-// POST /api/local/open-in-editor  -> open the current repo in VS Code
+// POST /api/local/open-in-editor  { root? }
+// Open a known repo in VS Code; defaults to the currently selected one.
 router.post(
   "/open-in-editor",
-  requireLocalRepo,
-  asyncRoute(async (_req, res) => {
-    await openInEditor(res.locals.repoRoot as string);
+  asyncRoute(async (req, res) => {
+    const requested = typeof req.body?.root === "string" ? req.body.root : "";
+    let root = requested;
+    if (requested) {
+      const { repos } = await listRepos();
+      if (!repos.some((r) => r.root === requested)) {
+        res.status(404).json({ error: "unknown_repo", message: "That repository isn't in the list." });
+        return;
+      }
+    } else {
+      root = req.session.localRepo?.root ?? "";
+      if (!root) {
+        res.status(409).json({ error: "no_local_repo", message: "No repository is selected." });
+        return;
+      }
+    }
+    await openInEditor(root);
     res.json({ ok: true });
   })
 );

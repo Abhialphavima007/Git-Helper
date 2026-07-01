@@ -29,13 +29,16 @@ export function LocalComparePage() {
   const [note, setNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  // Sensible defaults once branches load: base = main/master/default, compare = current.
+  const baseBranch = branches.find((b) => b.ref === base);
+
+  // Sensible defaults once branches load: base = a local main/master, compare = current.
   useEffect(() => {
     if (!branches.length) return;
-    const names = branches.map((b) => b.name);
-    const preferredBase = ["main", "master", "develop"].find((n) => names.includes(n)) ?? names[0];
-    setBase((prev) => (prev && names.includes(prev) ? prev : preferredBase));
-    setCompare((prev) => (prev && names.includes(prev) ? prev : current?.name ?? names[0]));
+    const refs = branches.map((b) => b.ref);
+    const localRefs = branches.filter((b) => !b.isRemote).map((b) => b.ref);
+    const preferredBase = ["main", "master", "develop"].find((n) => localRefs.includes(n)) ?? localRefs[0] ?? refs[0];
+    setBase((prev) => (prev && refs.includes(prev) ? prev : preferredBase));
+    setCompare((prev) => (prev && refs.includes(prev) ? prev : current?.ref ?? refs[0]));
   }, [branches, current]);
 
   const sameRef = base === compare;
@@ -53,7 +56,7 @@ export function LocalComparePage() {
   const mergeM = useMutation({
     mutationFn: async () => {
       // git merges into the *current* branch, so switch to base first if needed.
-      if (current?.name !== base) await api.local.checkout(base);
+      if (current?.ref !== base) await api.local.checkout(base);
       return api.local.merge(compare);
     },
     onSuccess: (res) => {
@@ -89,9 +92,9 @@ export function LocalComparePage() {
       {branches.length > 0 && (
         <Card className="p-4">
           <div className="flex flex-wrap items-end gap-3">
-            <BranchSelect label="Base (merge into)" value={base} onChange={setBase} options={branches.map((b) => b.name)} />
+            <BranchSelect label="Base (merge into)" value={base} onChange={setBase} options={branches.map((b) => b.ref)} />
             <span className="pb-2 text-muted">←</span>
-            <BranchSelect label="Compare (merge from)" value={compare} onChange={setCompare} options={branches.map((b) => b.name)} />
+            <BranchSelect label="Compare (merge from)" value={compare} onChange={setCompare} options={branches.map((b) => b.ref)} />
             <button
               onClick={() => {
                 const b = base;
@@ -127,14 +130,22 @@ export function LocalComparePage() {
               )}
             </div>
             <button
-              disabled={mergeM.isPending || data.ahead === 0}
+              disabled={mergeM.isPending || data.ahead === 0 || baseBranch?.isRemote}
               onClick={() => mergeM.mutate()}
               className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-50"
-              title={data.ahead === 0 ? "Nothing to merge" : `Merge ${data.compare} into ${data.base}`}
+              title={
+                baseBranch?.isRemote
+                  ? "Check out the base branch locally to merge into it"
+                  : data.ahead === 0
+                  ? "Nothing to merge"
+                  : `Merge ${data.compare} into ${data.base}`
+              }
             >
               {mergeM.isPending
                 ? "Merging…"
-                : current?.name === base
+                : baseBranch?.isRemote
+                ? "Base is remote — check it out first"
+                : current?.ref === base
                 ? `Merge ${data.compare} into ${data.base}`
                 : `Switch to ${data.base} & merge ${data.compare}`}
             </button>

@@ -193,17 +193,22 @@ export async function getState(root: string): Promise<RepoState> {
 }
 
 export interface BranchSummary {
-  name: string;
+  name: string; // display name, e.g. "feature/login"
+  ref: string; // git ref to use, e.g. "feature/login" (local) or "origin/feature/login" (remote-only)
   current: boolean;
+  isRemote: boolean; // a remote-only branch (fetched, but not yet a local branch)
   upstream: string | null;
   ahead: number;
   behind: number;
   lastCommit: { id: string; message: string; date: string | null } | null;
 }
 
+// All branches: local branches plus remote-tracking branches that don't have a
+// local copy yet. After a clone only the default branch is local, so the rest
+// show up here as `isRemote` — checking one out creates a local tracking branch.
 export async function getBranches(root: string): Promise<BranchSummary[]> {
-  // for-each-ref gives upstream tracking + last-commit data in one shot.
   const fmt = [
+    "%(refname)", // full ref
     "%(refname:short)",
     "%(HEAD)",
     "%(upstream:short)",
@@ -213,25 +218,59 @@ export async function getBranches(root: string): Promise<BranchSummary[]> {
     "%(committerdate:iso-strict)",
   ].join(UNIT);
 
-  const raw = await runGit(root, ["for-each-ref", `--format=${fmt}`, "refs/heads"]);
-  return raw
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [name, head, upstream, track, sha, subject, date] = line.split(UNIT);
+  const raw = await runGit(root, ["for-each-ref", `--format=${fmt}`, "refs/heads", "refs/remotes"]);
+  const lines = raw.split("\n").filter(Boolean);
+
+  const localNames = new Set<string>();
+  for (const line of lines) {
+    const full = line.split(UNIT)[0];
+    if (full.startsWith("refs/heads/")) localNames.add(full.slice("refs/heads/".length));
+  }
+
+  const locals: BranchSummary[] = [];
+  const remotes: BranchSummary[] = [];
+
+  for (const line of lines) {
+    const [full, short, head, upstream, track, sha, subject, date] = line.split(UNIT);
+    const lastCommit = sha ? { id: sha, message: subject || "", date: date || null } : null;
+
+    if (full.startsWith("refs/remotes/")) {
+      if (full.endsWith("/HEAD")) continue; // skip the origin/HEAD symbolic pointer
+      const shortName = short.replace(/^[^/]+\//, ""); // strip "origin/"
+      if (localNames.has(shortName)) continue; // already have a local branch
+      remotes.push({
+        name: shortName,
+        ref: short,
+        current: false,
+        isRemote: true,
+        upstream: null,
+        ahead: 0,
+        behind: 0,
+        lastCommit,
+      });
+      continue;
+    }
+
+    if (full.startsWith("refs/heads/")) {
       const a = /ahead (\d+)/.exec(track || "");
       const b = /behind (\d+)/.exec(track || "");
-      return {
+      const name = full.slice("refs/heads/".length);
+      locals.push({
         name,
+        ref: name,
         current: head === "*",
+        isRemote: false,
         upstream: upstream || null,
         ahead: a ? Number(a[1]) : 0,
         behind: b ? Number(b[1]) : 0,
-        lastCommit: sha
-          ? { id: sha, message: subject || "", date: date || null }
-          : null,
-      };
-    });
+        lastCommit,
+      });
+    }
+  }
+
+  locals.sort((x, y) => (x.current ? -1 : y.current ? 1 : x.name.localeCompare(y.name)));
+  remotes.sort((x, y) => x.name.localeCompare(y.name));
+  return [...locals, ...remotes];
 }
 
 export interface GraphCommit {
