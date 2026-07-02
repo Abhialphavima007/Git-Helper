@@ -1,5 +1,10 @@
 # Azure DevOps Git Helper
 
+> **Download the desktop app:** grab the installer for Windows or macOS from the
+> [latest release](https://github.com/Abhialphavima007/Git-Helper/releases/latest).
+> (Unsigned builds — see [desktop/README.md](desktop/README.md) for the
+> one-time SmartScreen/Gatekeeper "Open anyway" step.)
+
 A friendly visual layer over **Azure DevOps Repos** *and your **local Git** repositories* for developers who don't live in the Git CLI. It turns raw Git/Azure DevOps state into plain language and answers three questions on every screen: **Where am I? What's the state? What can I safely do next?**
 
 This is a **single Vite + React + Tailwind app**. The small Azure DevOps proxy runs as **Vite middleware**, so everything is one folder, one `package.json`, one command — while the PAT still stays **server-side** and never reaches the browser.

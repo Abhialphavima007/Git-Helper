@@ -19,9 +19,21 @@
     "asar": false,
     "files": ["main.cjs", "server.cjs", "dist/**/*", "package.json"],
     "directories": { "output": "release" },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Abhialphavima007",
+        "repo": "Git-Helper",
+        "releaseType": "release"
+      }
+    ],
     "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
-    "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    },
     "linux": { "target": "AppImage", "category": "Development" }
   }
 }

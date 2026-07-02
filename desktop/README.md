@@ -22,9 +22,45 @@ npm start                  # rebuilds the app, then opens the window
 get the latest UI — no separate build step to forget. Use `npm run start:fast`
 to skip the rebuild and just relaunch what was last built.
 
-## Build an installer to share with other people
+## Distribute to everyone (recommended): GitHub Releases
 
-To produce a file others can install **without Node, npm, or this repo**:
+The repo has a GitHub Actions pipeline (`.github/workflows/release.yml`) that
+builds the installers on **real Windows and macOS machines** and publishes
+them to the repo's **Releases** page. This is the way to ship both platforms —
+a Mac installer can only be built on macOS, which Actions provides.
+
+**To publish a release:**
+
+```bash
+# 1. (when shipping a new version) bump "version" in desktop/package.json, commit
+# 2. tag it (tag = v + that version) and push the tag:
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+~10 minutes later both installers appear at:
+
+> **https://github.com/Abhialphavima007/Git-Helper/releases/latest**
+
+**What users do:** open that link and download —
+- Windows: `Git Helper Setup <version>.exe` → run it
+- macOS (Intel & Apple Silicon, one file): `Git Helper-<version>-universal.dmg` → open → drag to Applications
+
+> The repo must be **public** for others to download (private repos require a
+> GitHub account with access).
+
+### First-launch warnings (unsigned builds)
+
+The installers are not code-signed (signing needs paid certificates), so:
+- **Windows SmartScreen**: "Windows protected your PC" → click **More info → Run anyway**.
+- **macOS Gatekeeper**: "cannot verify the developer" → **right-click the app → Open → Open**
+  (or System Settings → Privacy & Security → **Open Anyway**).
+
+To remove these warnings later: a Windows code-signing certificate for the
+`.exe`, and an Apple Developer ID ($99/yr) + notarization for the `.dmg` —
+both slot into the `build` config in `package.json`.
+
+## Build an installer locally (this OS only)
 
 ```bash
 cd desktop
@@ -32,18 +68,8 @@ npm install                # one time
 npm run dist               # rebuilds the app, then packages -> desktop/release/
 ```
 
-The installer lands in **`desktop/release/`**:
-
-| OS you build on | Output | The other person does |
-|---|---|---|
-| Windows | `Git Helper Setup <version>.exe` | double-click → install → launch |
-| macOS | `Git Helper-<version>.dmg` | open → drag to Applications |
-| Linux | `Git Helper-<version>.AppImage` | `chmod +x` → run |
-
-Share the file from `desktop/release/`. **You must build on the same OS you're
-targeting** — electron-builder does not cross-compile Windows ↔ macOS reliably.
-(For a signed/notarized installer, add code-signing certs to the
-`build` config in `package.json`.)
+This produces the installer for the OS you're on (Windows → `.exe`). Use the
+GitHub Actions release flow above when you need macOS too.
 
 ## Troubleshooting
 
