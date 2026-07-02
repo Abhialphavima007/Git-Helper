@@ -61,6 +61,22 @@ Press **Connect**. The sidebar now shows the **Azure DevOps** section
 > form — pick any Git folder on your machine and skip to
 > [Status](#4-status--your-home-screen).
 
+### Connecting later, and disconnecting
+
+You don't have to connect right away — the two modes are independent:
+
+- **+ Connect Azure DevOps** (bottom of the sidebar) — if you started with a
+  local repository only, click this any time to open the Connect screen and add
+  the Azure side. Both sections then live together in the sidebar, and cloning
+  from [Repositories](#2-clone-a-repository) becomes available.
+- **Disconnect Azure** (bottom of the sidebar) — signs you out and forgets the
+  token for this session. Your local repositories are untouched.
+- **Close local repo** — deselects the current local repository (it stays in
+  [Your repositories](#3-your-repositories) for one-click reopening).
+
+The connection lasts for your session (about 8 hours) — after that, just
+connect again with the same PAT until the token itself expires.
+
 ---
 
 ## 2. Clone a repository
