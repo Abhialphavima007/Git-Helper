@@ -312,7 +312,10 @@ export async function getGraph(
   ref?: string,
   firstParent = false
 ): Promise<GraphCommit[]> {
-  const fmt = ["%H", "%h", "%p", "%an", "%aI", "%s", "%D"].join(UNIT) + REC;
+  // %P (full parent hashes) — the lane layout matches parents against %H, so
+  // abbreviated %p hashes would never match and every commit would open a new
+  // lane (the "staircase" bug).
+  const fmt = ["%H", "%h", "%P", "%an", "%aI", "%s", "%D"].join(UNIT) + REC;
   const args = ["log", `--pretty=format:${fmt}`, `-n`, String(limit)];
   if (all) args.push("--all");
   else if (ref) args.push(ref);

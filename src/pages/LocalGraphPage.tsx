@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, type GraphCommit } from "../api/client";
@@ -327,7 +328,9 @@ export function LocalGraphPage() {
   );
 }
 
-// Everything one commit changed: message, meta, and per-file diffs.
+// Everything one commit changed, in a slide-over panel on the right — it
+// appears instantly on click (no scrolling past the commit list), stays put
+// while you click other commits, and closes with Esc or the × button.
 function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { root } = useLocalRepo();
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -337,13 +340,30 @@ function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
     queryFn: () => api.local.getCommitDetail(id),
   });
 
+  // Fresh commit → start with files collapsed again.
+  useEffect(() => setOpenFile(null), [id]);
+
+  // Esc closes the panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const d = query.data;
 
-  return (
-    <Card className="p-0">
+  // Portal to <body>: a fixed panel must escape transformed/scrolling ancestors.
+  return createPortal(
+    <aside
+      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[600px] flex-col border-l border-line bg-card shadow-2xl sm:w-[min(600px,92vw)]"
+      role="dialog"
+      aria-label="Commit details"
+    >
       <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
         <div className="min-w-0">
-          <p className="font-mono text-xs text-muted">
+          <p className="truncate font-mono text-xs text-muted">
             commit <Mono>{d?.full ?? id}</Mono>
           </p>
           {d && (
@@ -363,60 +383,68 @@ function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
             </>
           )}
         </div>
-        <button onClick={onClose} className="shrink-0 rounded-md p-1 text-muted hover:text-ink" aria-label="Close details">
+        <button
+          onClick={onClose}
+          className="shrink-0 rounded-md border border-line p-1.5 text-muted hover:bg-paper hover:text-ink"
+          aria-label="Close details"
+          title="Close (Esc)"
+        >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
           </svg>
         </button>
       </div>
 
-      {query.isLoading && (
-        <div className="p-5">
-          <Spinner label="Loading commit…" />
-        </div>
-      )}
-      {query.isError && (
-        <div className="p-5">
-          <ErrorNote error={query.error} />
-        </div>
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {query.isLoading && (
+          <div className="p-5">
+            <Spinner label="Loading commit…" />
+          </div>
+        )}
+        {query.isError && (
+          <div className="p-5">
+            <ErrorNote error={query.error} />
+          </div>
+        )}
 
-      {d && (
-        <>
-          {d.body && (
-            <p className="whitespace-pre-wrap border-b border-line px-5 py-3 text-sm text-ink">{d.body}</p>
-          )}
-          <div className="px-5 py-3 text-sm font-semibold text-ink">
-            {d.files.length} file{d.files.length === 1 ? "" : "s"} changed{" "}
-            <span className="font-mono text-xs font-normal">
-              <span className="text-ok">+{d.totalAdded}</span> <span className="text-danger">−{d.totalRemoved}</span>
-            </span>
-          </div>
-          <div className="divide-y divide-line border-t border-line">
-            {d.files.map((f) => {
-              const isOpen = openFile === f.path;
-              return (
-                <div key={f.path}>
-                  <button
-                    onClick={() => setOpenFile(isOpen ? null : f.path)}
-                    className="flex w-full items-center gap-3 px-5 py-2.5 text-left hover:bg-paper"
-                  >
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{f.path}</span>
-                    <DiffStat added={f.added} removed={f.removed} />
-                    <span className="shrink-0 text-muted">{isOpen ? "▾" : "▸"}</span>
-                  </button>
-                  {isOpen && (
-                    <div className="px-5 pb-3">
-                      <CommitFileDiff id={d.id} file={f.path} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </Card>
+        {d && (
+          <>
+            {d.body && (
+              <p className="whitespace-pre-wrap border-b border-line px-5 py-3 text-sm text-ink">{d.body}</p>
+            )}
+            <div className="px-5 py-3 text-sm font-semibold text-ink">
+              {d.files.length} file{d.files.length === 1 ? "" : "s"} changed{" "}
+              <span className="font-mono text-xs font-normal">
+                <span className="text-ok">+{d.totalAdded}</span> <span className="text-danger">−{d.totalRemoved}</span>
+              </span>
+            </div>
+            <div className="divide-y divide-line border-t border-line">
+              {d.files.map((f) => {
+                const isOpen = openFile === f.path;
+                return (
+                  <div key={f.path}>
+                    <button
+                      onClick={() => setOpenFile(isOpen ? null : f.path)}
+                      className="flex w-full items-center gap-3 px-5 py-2.5 text-left hover:bg-paper"
+                    >
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{f.path}</span>
+                      <DiffStat added={f.added} removed={f.removed} />
+                      <span className="shrink-0 text-muted">{isOpen ? "▾" : "▸"}</span>
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 pb-3">
+                        <CommitFileDiff id={d.id} file={f.path} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </aside>,
+    document.body
   );
 }
 
