@@ -305,10 +305,20 @@ export interface GraphCommit {
   refs: string[]; // decorations: branch/tag names, "HEAD"
 }
 
-export async function getGraph(root: string, limit = 60, all = true): Promise<GraphCommit[]> {
+export async function getGraph(
+  root: string,
+  limit = 60,
+  all = true,
+  ref?: string,
+  firstParent = false
+): Promise<GraphCommit[]> {
   const fmt = ["%H", "%h", "%p", "%an", "%aI", "%s", "%D"].join(UNIT) + REC;
   const args = ["log", `--pretty=format:${fmt}`, `-n`, String(limit)];
   if (all) args.push("--all");
+  else if (ref) args.push(ref);
+  // "Simplify merges": follow only each merge's first parent — the story of
+  // the branch without the merged-in side branches.
+  if (!all && firstParent) args.push("--first-parent");
   // date-order keeps parallel branches interleaved by time, which packs lanes
   // far tighter than topo-order (children still always precede parents).
   args.push("--date-order");

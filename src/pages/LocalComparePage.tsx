@@ -151,9 +151,34 @@ export function LocalComparePage() {
             </button>
           </Card>
 
-          {data.ahead === 0 && (
+          {data.ahead === 0 && data.behind === 0 && (
             <Card className="p-6 text-center text-sm text-muted">
-              <Mono>{data.compare}</Mono> has no commits that <Mono>{data.base}</Mono> doesn't already have.
+              <Mono>{data.compare}</Mono> and <Mono>{data.base}</Mono> point at the same history — nothing to merge
+              either way.
+            </Card>
+          )}
+
+          {data.ahead === 0 && data.behind > 0 && (
+            <Card className="border-warn/30 bg-warn-bg p-5">
+              <h3 className="font-display text-sm font-semibold text-ink">
+                Nothing to merge this way — <Mono>{data.compare}</Mono> is just out of date
+              </h3>
+              <p className="mt-1.5 text-sm text-ink">
+                <Mono>{data.compare}</Mono> has <b>no commits of its own</b>, and <Mono>{data.base}</Mono> has moved{" "}
+                {data.behind} commit{data.behind === 1 ? "" : "s"} ahead of it. There's nothing to bring{" "}
+                <em>into</em> <Mono>{data.base}</Mono> — instead, <Mono>{data.compare}</Mono> needs a catch-up merge{" "}
+                <em>from</em> <Mono>{data.base}</Mono>.
+              </p>
+              <button
+                onClick={() => {
+                  const b = base;
+                  setBase(compare);
+                  setCompare(b);
+                }}
+                className="mt-3 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-hover"
+              >
+                ⇄ Flip it — update {data.compare} from {data.base}
+              </button>
             </Card>
           )}
 

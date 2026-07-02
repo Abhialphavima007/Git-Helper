@@ -98,16 +98,29 @@ function layoutGraph(commits: GraphCommit[]): { rows: Row[]; cols: number } {
   return { rows, cols: maxCols };
 }
 
+const ALL = "__all__";
+
 export function LocalGraphPage() {
   const { name, root } = useLocalRepo();
-  // Current branch by default — the linear story. "All branches" fans out the DAG.
-  const [all, setAll] = useState(false);
+  const [scope, setScope] = useState<string>(""); // "" = current branch (default), ALL, or a branch ref
+  const [view, setView] = useState<"graph" | "list">("graph");
+  const [simplify, setSimplify] = useState(false); // --first-parent
   const [limit, setLimit] = useState(80);
   const [selected, setSelected] = useState<string | null>(null);
 
+  const branchesQuery = useQuery({
+    queryKey: ["local-branches", root],
+    queryFn: () => api.local.getBranches(),
+    enabled: !!root,
+  });
+  const branches = branchesQuery.data ?? [];
+
+  const isAll = scope === ALL;
+  const ref = scope && scope !== ALL ? scope : undefined; // undefined = HEAD (current branch)
+
   const query = useQuery({
-    queryKey: ["local-graph", root, all, limit],
-    queryFn: () => api.local.getGraph(limit, all),
+    queryKey: ["local-graph", root, scope, simplify, limit],
+    queryFn: () => api.local.getGraph(limit, isAll, ref, simplify),
     enabled: !!root,
   });
 
@@ -120,44 +133,123 @@ export function LocalGraphPage() {
   const height = Math.max(rows.length * ROW, ROW);
   const x = (c: number) => PAD_X + c * COLW;
 
+  const segBtn = (active: boolean) =>
+    `rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
+      active ? "bg-accent/10 text-accent" : "text-muted hover:text-ink"
+    }`;
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="font-mono text-xs uppercase tracking-widest text-muted">History</p>
-          <h1 className="mt-1 font-display text-2xl font-bold text-ink">Commit graph — {name}</h1>
+          <h1 className="mt-1 font-display text-2xl font-bold text-ink">History — {name}</h1>
           <p className="mt-1 text-sm text-muted">Click a commit to see exactly what it changed.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-sm text-muted">
-            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
-            All branches
-          </label>
+        <Link to="/local" className="text-sm font-medium text-accent hover:text-accent-hover">
+          ← Status
+        </Link>
+      </header>
+
+      {/* View controls */}
+      <Card className="flex flex-wrap items-center gap-3 p-3">
+        <div className="inline-flex rounded-lg border border-line bg-card p-0.5">
+          <button className={segBtn(view === "graph")} onClick={() => setView("graph")}>
+            Graph
+          </button>
+          <button className={segBtn(view === "list")} onClick={() => setView("list")}>
+            List
+          </button>
+        </div>
+
+        <label className="flex items-center gap-1.5 text-sm text-muted">
+          Show
           <select
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            className="rounded-lg border border-line bg-card px-2 py-1 text-sm text-ink focus-visible:border-accent"
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            className="rounded-lg border border-line bg-card px-2 py-1 font-mono text-sm text-ink focus-visible:border-accent"
           >
-            {[40, 80, 150, 300].map((n) => (
-              <option key={n} value={n}>
-                Last {n}
+            <option value="">Current branch</option>
+            <option value={ALL}>All branches</option>
+            {branches.map((b) => (
+              <option key={b.ref} value={b.ref}>
+                {b.name}
+                {b.isRemote ? " (remote)" : ""}
               </option>
             ))}
           </select>
-          <Link to="/local" className="text-sm font-medium text-accent hover:text-accent-hover">
-            ← Status
-          </Link>
-        </div>
-      </header>
+        </label>
 
-      {query.isLoading && <Spinner label="Building the graph…" />}
+        <select
+          value={limit}
+          onChange={(e) => setLimit(Number(e.target.value))}
+          className="rounded-lg border border-line bg-card px-2 py-1 text-sm text-ink focus-visible:border-accent"
+        >
+          {[40, 80, 150, 300].map((n) => (
+            <option key={n} value={n}>
+              Last {n}
+            </option>
+          ))}
+        </select>
+
+        {!isAll && (
+          <label
+            className="flex items-center gap-1.5 text-sm text-muted"
+            title="Follow only each merge's first parent — the branch's own story without merged-in side branches"
+          >
+            <input type="checkbox" checked={simplify} onChange={(e) => setSimplify(e.target.checked)} />
+            Simplify merges
+          </label>
+        )}
+
+        {isAll && (
+          <span className="text-xs text-muted">
+            Tip: long-diverged branches draw long parallel rails — pick one branch for a cleaner view.
+          </span>
+        )}
+      </Card>
+
+      {query.isLoading && <Spinner label="Reading history…" />}
       {query.isError && <ErrorNote error={query.error} />}
 
       {query.data && rows.length === 0 && (
         <Card className="p-8 text-center text-sm text-muted">No commits yet in this repository.</Card>
       )}
 
-      {rows.length > 0 && (
+      {view === "list" && rows.length > 0 && (
+        <Card className="divide-y divide-line p-0">
+          {rows.map((r) => {
+            const isSel = selected === r.commit.id;
+            return (
+              <button
+                key={r.commit.full}
+                onClick={() => setSelected(isSel ? null : r.commit.id)}
+                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
+                  isSel ? "bg-accent/10" : "hover:bg-paper"
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    {r.commit.refs.map((refName) => (
+                      <RefChip key={refName} label={refName} />
+                    ))}
+                    <span className="truncate text-sm text-ink">{r.commit.subject || "(no message)"}</span>
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-muted">
+                    {r.commit.author} · {timeAgo(r.commit.date)}
+                    {r.commit.parents.length > 1 && (
+                      <span className="ml-2 rounded bg-line px-1.5 py-0.5 text-[10px] font-medium uppercase">merge</span>
+                    )}
+                  </span>
+                </span>
+                <Mono>{r.commit.id}</Mono>
+              </button>
+            );
+          })}
+        </Card>
+      )}
+
+      {view === "graph" && rows.length > 0 && (
         <Card className="overflow-x-auto p-0">
           <div className="flex min-w-[320px]">
             <svg width={graphWidth} height={height} className="shrink-0" role="img" aria-label="Commit graph">

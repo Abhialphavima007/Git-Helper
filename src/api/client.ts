@@ -402,8 +402,10 @@ export const api = {
 
     getBranches: () => http<LocalBranch[]>("/api/local/branches"),
 
-    getGraph: (limit = 60, all = true) =>
-      http<GraphCommit[]>(`/api/local/graph?limit=${limit}&all=${all ? 1 : 0}`),
+    getGraph: (limit = 60, all = true, ref?: string, firstParent = false) =>
+      http<GraphCommit[]>(
+        `/api/local/graph?limit=${limit}&all=${all ? 1 : 0}${ref ? `&ref=${encodeURIComponent(ref)}` : ""}${firstParent ? "&fp=1" : ""}`
+      ),
 
     getCommitDetail: (id: string) =>
       http<CommitDetail>(`/api/local/commit-detail?id=${encodeURIComponent(id)}`),

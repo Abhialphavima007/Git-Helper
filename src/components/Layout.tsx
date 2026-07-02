@@ -97,7 +97,7 @@ export function Layout({ children }: { children: ReactNode }) {
         title={item.badge ? `${item.label} (${item.badge})` : item.label}
         className={({ isActive }) =>
           `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-            collapsed ? "lg:justify-center lg:px-2" : ""
+            collapsed ? "lg:justify-center lg:px-2 lg:py-2.5 lg:[&_svg]:h-[22px] lg:[&_svg]:w-[22px]" : ""
           } ${isActive ? "bg-accent/10 text-accent" : "text-muted hover:bg-paper hover:text-ink"}`
         }
       >
@@ -154,7 +154,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className={`flex h-full flex-col overflow-y-auto py-5 ${collapsed ? "px-2 lg:items-stretch" : "px-4"}`}>
           <div className={`flex items-center justify-between px-2 ${collapsed ? "lg:justify-center lg:px-0" : ""}`}>
             <span className={`font-display text-base font-bold text-ink ${textCls}`}>Git Helper</span>
-            <span className={`hidden font-display text-base font-bold text-accent ${collapsed ? "lg:block" : ""}`}>G</span>
+            <span className={`hidden font-display text-xl font-bold text-accent ${collapsed ? "lg:block" : ""}`}>G</span>
             <button
               onClick={closeDrawer}
               aria-label="Close menu"

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type FsListing } from "../api/client";
 import { Spinner } from "./ui";
 
@@ -40,8 +41,10 @@ export function FolderPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-ink/40 p-4" onClick={onClose}>
+  // Portal to <body>: ancestors with CSS transforms (the animated sidebar)
+  // would otherwise trap this fixed-position overlay inside themselves.
+  return createPortal(
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4" onClick={onClose}>
       <div
         className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-line bg-card shadow-card"
         onClick={(e) => e.stopPropagation()}
@@ -117,6 +120,7 @@ export function FolderPicker({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

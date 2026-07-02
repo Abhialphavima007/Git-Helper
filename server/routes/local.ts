@@ -152,13 +152,15 @@ router.get(
   })
 );
 
-// GET /api/local/graph?limit=60&all=1
+// GET /api/local/graph?limit=60&all=1&ref=<branch>&fp=1
 router.get(
   "/graph",
   asyncRoute(async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 300);
-    const all = req.query.all !== "0";
-    res.json(await getGraph(res.locals.repoRoot as string, limit, all));
+    const all = req.query.all === "1" || req.query.all === "true";
+    const ref = typeof req.query.ref === "string" && req.query.ref ? req.query.ref : undefined;
+    const firstParent = req.query.fp === "1" || req.query.fp === "true";
+    res.json(await getGraph(res.locals.repoRoot as string, limit, all, ref, firstParent));
   })
 );
 
