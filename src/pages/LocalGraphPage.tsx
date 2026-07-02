@@ -192,7 +192,7 @@ export function LocalGraphPage() {
                     cy={cy}
                     r={isSel ? R + 2 : isHead ? R + 1.5 : R}
                     fill={color(r.col)}
-                    stroke={isSel ? "#14181F" : isHead ? "#14181F" : "#FFFFFF"}
+                    style={{ stroke: isSel || isHead ? "rgb(var(--ink))" : "rgb(var(--card))" }}
                     strokeWidth={isSel ? 2.5 : isHead ? 2 : 1.5}
                     className="cursor-pointer"
                     onClick={() => setSelected(isSel ? null : r.commit.id)}
@@ -345,7 +345,7 @@ function RefChip({ label }: { label: string }) {
   const isRemote = label.startsWith("origin/");
   const text = isTag ? label.replace(/^tag:\s*/, "") : label;
   const cls = isHead
-    ? "bg-ink text-white"
+    ? "bg-ink text-paper"
     : isTag
     ? "bg-warn-bg text-warn"
     : isRemote

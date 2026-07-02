@@ -3,14 +3,43 @@
 @tailwind utilities;
 
 @layer base {
+  /* Palette as space-separated RGB triples so Tailwind alpha modifiers work.
+     Light is the default; `html.dark` flips the scheme. The accent pair is
+     also changed at runtime by the theme picker (Indigo default). */
   :root {
-    /* Accent theme (space-separated RGB so Tailwind alpha modifiers work).
-       Changed at runtime by the theme picker; Indigo is the default. */
+    --paper: 247 248 250;
+    --card: 255 255 255;
+    --ink: 20 24 31;
+    --muted: 91 101 115;
+    --line: 226 230 236;
     --accent: 59 91 219;
     --accent-hover: 49 76 192;
+    --ok: 31 138 83;
+    --ok-bg: 231 244 237;
+    --warn: 178 106 0;
+    --warn-bg: 251 240 220;
+    --danger: 194 57 47;
+    --danger-bg: 251 233 231;
+  }
+  .dark {
+    --paper: 15 18 22;
+    --card: 23 27 33;
+    --ink: 230 233 238;
+    --muted: 154 164 178;
+    --line: 42 48 56;
+    --ok: 61 190 130;
+    --ok-bg: 18 41 28;
+    --warn: 229 165 78;
+    --warn-bg: 46 36 19;
+    --danger: 242 123 114;
+    --danger-bg: 51 23 21;
   }
   html {
     -webkit-font-smoothing: antialiased;
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
   }
   body {
     @apply bg-paper text-ink font-sans;

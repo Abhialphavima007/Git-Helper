@@ -3,20 +3,21 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      // The whole palette is CSS-variable driven so the app supports light and
+      // dark modes plus runtime accent themes (see index.css + ThemePicker).
       colors: {
-        paper: "#F7F8FA",
-        card: "#FFFFFF",
-        ink: "#14181F",
-        muted: "#5B6573",
-        line: "#E2E6EC",
-        // Driven by CSS variables so the user can pick an accent theme at runtime.
+        paper: "rgb(var(--paper) / <alpha-value>)",
+        card: "rgb(var(--card) / <alpha-value>)",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        muted: "rgb(var(--muted) / <alpha-value>)",
+        line: "rgb(var(--line) / <alpha-value>)",
         accent: {
           DEFAULT: "rgb(var(--accent) / <alpha-value>)",
           hover: "rgb(var(--accent-hover) / <alpha-value>)",
         },
-        ok: { DEFAULT: "#1F8A53", bg: "#E7F4ED" },
-        warn: { DEFAULT: "#B26A00", bg: "#FBF0DC" },
-        danger: { DEFAULT: "#C2392F", bg: "#FBE9E7" },
+        ok: { DEFAULT: "rgb(var(--ok) / <alpha-value>)", bg: "rgb(var(--ok-bg) / <alpha-value>)" },
+        warn: { DEFAULT: "rgb(var(--warn) / <alpha-value>)", bg: "rgb(var(--warn-bg) / <alpha-value>)" },
+        danger: { DEFAULT: "rgb(var(--danger) / <alpha-value>)", bg: "rgb(var(--danger-bg) / <alpha-value>)" },
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

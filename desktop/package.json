@@ -5,8 +5,9 @@
   "description": "Desktop shell (Electron) for Git Helper — full local-git experience.",
   "main": "main.cjs",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder"
+    "start": "npm --prefix .. run desktop:build && electron .",
+    "start:fast": "electron .",
+    "dist": "npm --prefix .. run desktop:build && electron-builder"
   },
   "devDependencies": {
     "electron": "^33.0.0",

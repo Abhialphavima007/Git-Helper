@@ -12,25 +12,24 @@ This folder is isolated from the web build — its own `package.json`, its own
 From the **repository root**:
 
 ```bash
-npm install
-npm run desktop:build      # builds the frontend into desktop/dist + bundles the server
+npm install                # one time
 cd desktop
-npm install                # installs Electron (one time, ~200 MB)
-npm start                  # opens the Git Helper window
+npm install                # one time — installs Electron (~200 MB)
+npm start                  # rebuilds the app, then opens the window
 ```
+
+`npm start` **always rebuilds first**, so after a `git pull` you automatically
+get the latest UI — no separate build step to forget. Use `npm run start:fast`
+to skip the rebuild and just relaunch what was last built.
 
 ## Build an installer to share with other people
 
 To produce a file others can install **without Node, npm, or this repo**:
 
 ```bash
-# from the repo root
-npm run desktop:build
-
-# then in this folder
 cd desktop
-npm install
-npm run dist               # runs electron-builder -> desktop/release/
+npm install                # one time
+npm run dist               # rebuilds the app, then packages -> desktop/release/
 ```
 
 The installer lands in **`desktop/release/`**:
