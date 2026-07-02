@@ -32,6 +32,8 @@ import {
   discardFiles,
   undoLastCommit,
   amendCommit,
+  getCommitDetail,
+  commitFileDiff,
 } from "../localGit";
 import { asyncRoute, requireLocalRepo } from "../session";
 
@@ -247,6 +249,33 @@ router.post(
     const root = res.locals.repoRoot as string;
     await resolveConflict(root, file, content);
     res.json({ resolved: file, state: await getState(root) });
+  })
+);
+
+// GET /api/local/commit-detail?id=<sha>  -> full commit info + changed files
+router.get(
+  "/commit-detail",
+  asyncRoute(async (req, res) => {
+    const id = typeof req.query.id === "string" ? req.query.id : "";
+    if (!id || !/^[0-9a-f]{4,40}$/i.test(id)) {
+      res.status(400).json({ error: "bad_id", message: "A commit id is required." });
+      return;
+    }
+    res.json(await getCommitDetail(res.locals.repoRoot as string, id));
+  })
+);
+
+// GET /api/local/commit-diff?id=<sha>&file=...  -> that file's diff in the commit
+router.get(
+  "/commit-diff",
+  asyncRoute(async (req, res) => {
+    const id = typeof req.query.id === "string" ? req.query.id : "";
+    const file = typeof req.query.file === "string" ? req.query.file : "";
+    if (!id || !/^[0-9a-f]{4,40}$/i.test(id) || !file) {
+      res.status(400).json({ error: "missing_fields", message: "A commit id and file are required." });
+      return;
+    }
+    res.json({ id, file, diff: await commitFileDiff(res.locals.repoRoot as string, id, file) });
   })
 );
 

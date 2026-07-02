@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { api, type GraphCommit } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { timeAgo } from "../lib/git";
-import { Card, ErrorNote, Mono, Spinner } from "../components/ui";
+import { Card, DiffStat, ErrorNote, Mono, Spinner } from "../components/ui";
+import { DiffLines } from "../components/DiffView";
 
 const ROW = 48;
 const COLW = 20;
@@ -99,8 +100,10 @@ function layoutGraph(commits: GraphCommit[]): { rows: Row[]; cols: number } {
 
 export function LocalGraphPage() {
   const { name, root } = useLocalRepo();
-  const [all, setAll] = useState(true);
+  // Current branch by default — the linear story. "All branches" fans out the DAG.
+  const [all, setAll] = useState(false);
   const [limit, setLimit] = useState(80);
+  const [selected, setSelected] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["local-graph", root, all, limit],
@@ -123,6 +126,7 @@ export function LocalGraphPage() {
         <div>
           <p className="font-mono text-xs uppercase tracking-widest text-muted">History</p>
           <h1 className="mt-1 font-display text-2xl font-bold text-ink">Commit graph — {name}</h1>
+          <p className="mt-1 text-sm text-muted">Click a commit to see exactly what it changed.</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-sm text-muted">
@@ -180,44 +184,159 @@ export function LocalGraphPage() {
               {rows.map((r, i) => {
                 const cy = i * ROW + ROW / 2;
                 const isHead = r.commit.refs.includes("HEAD");
+                const isSel = selected === r.commit.id;
                 return (
                   <circle
                     key={r.commit.full}
                     cx={x(r.col)}
                     cy={cy}
-                    r={isHead ? R + 1.5 : R}
+                    r={isSel ? R + 2 : isHead ? R + 1.5 : R}
                     fill={color(r.col)}
-                    stroke={isHead ? "#14181F" : "#FFFFFF"}
-                    strokeWidth={isHead ? 2 : 1.5}
+                    stroke={isSel ? "#14181F" : isHead ? "#14181F" : "#FFFFFF"}
+                    strokeWidth={isSel ? 2.5 : isHead ? 2 : 1.5}
+                    className="cursor-pointer"
+                    onClick={() => setSelected(isSel ? null : r.commit.id)}
                   />
                 );
               })}
             </svg>
 
             <ul className="min-w-0 flex-1 border-l border-line">
-              {rows.map((r) => (
-                <li
-                  key={r.commit.full}
-                  className="flex flex-col justify-center border-b border-line px-4"
-                  style={{ height: ROW }}
-                >
-                  <div className="flex items-center gap-2">
-                    {r.commit.refs.map((ref) => (
-                      <RefChip key={ref} label={ref} />
-                    ))}
-                    <span className="truncate text-sm text-ink">{r.commit.subject || "(no message)"}</span>
-                  </div>
-                  <p className="truncate text-xs text-muted">
-                    <Mono>{r.commit.id}</Mono> · {r.commit.author} · {timeAgo(r.commit.date)}
-                  </p>
-                </li>
-              ))}
+              {rows.map((r) => {
+                const isSel = selected === r.commit.id;
+                return (
+                  <li key={r.commit.full} style={{ height: ROW }}>
+                    <button
+                      onClick={() => setSelected(isSel ? null : r.commit.id)}
+                      className={`flex h-full w-full flex-col justify-center border-b border-line px-4 text-left transition-colors ${
+                        isSel ? "bg-accent/10" : "hover:bg-paper"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {r.commit.refs.map((ref) => (
+                          <RefChip key={ref} label={ref} />
+                        ))}
+                        <span className="truncate text-sm text-ink">{r.commit.subject || "(no message)"}</span>
+                      </span>
+                      <span className="truncate text-xs text-muted">
+                        <Mono>{r.commit.id}</Mono> · {r.commit.author} · {timeAgo(r.commit.date)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </Card>
       )}
+
+      {selected && <CommitDetail id={selected} onClose={() => setSelected(null)} />}
     </div>
   );
+}
+
+// Everything one commit changed: message, meta, and per-file diffs.
+function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
+  const { root } = useLocalRepo();
+  const [openFile, setOpenFile] = useState<string | null>(null);
+
+  const query = useQuery({
+    queryKey: ["local-commit-detail", root, id],
+    queryFn: () => api.local.getCommitDetail(id),
+  });
+
+  const d = query.data;
+
+  return (
+    <Card className="p-0">
+      <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+        <div className="min-w-0">
+          <p className="font-mono text-xs text-muted">
+            commit <Mono>{d?.full ?? id}</Mono>
+          </p>
+          {d && (
+            <>
+              <h2 className="mt-1 font-display text-lg font-semibold text-ink">{d.subject}</h2>
+              <p className="mt-1 text-sm text-muted">
+                {d.author} {d.email && <span className="text-muted/70">&lt;{d.email}&gt;</span>} · {timeAgo(d.date)}
+                {d.parents.length > 1 && <span className="ml-2 rounded bg-line px-1.5 py-0.5 text-[10px] font-medium uppercase">merge</span>}
+              </p>
+              {d.refs.length > 0 && (
+                <p className="mt-1.5 flex flex-wrap gap-1.5">
+                  {d.refs.map((ref) => (
+                    <RefChip key={ref} label={ref} />
+                  ))}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+        <button onClick={onClose} className="shrink-0 rounded-md p-1 text-muted hover:text-ink" aria-label="Close details">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      {query.isLoading && (
+        <div className="p-5">
+          <Spinner label="Loading commit…" />
+        </div>
+      )}
+      {query.isError && (
+        <div className="p-5">
+          <ErrorNote error={query.error} />
+        </div>
+      )}
+
+      {d && (
+        <>
+          {d.body && (
+            <p className="whitespace-pre-wrap border-b border-line px-5 py-3 text-sm text-ink">{d.body}</p>
+          )}
+          <div className="px-5 py-3 text-sm font-semibold text-ink">
+            {d.files.length} file{d.files.length === 1 ? "" : "s"} changed{" "}
+            <span className="font-mono text-xs font-normal">
+              <span className="text-ok">+{d.totalAdded}</span> <span className="text-danger">−{d.totalRemoved}</span>
+            </span>
+          </div>
+          <div className="divide-y divide-line border-t border-line">
+            {d.files.map((f) => {
+              const isOpen = openFile === f.path;
+              return (
+                <div key={f.path}>
+                  <button
+                    onClick={() => setOpenFile(isOpen ? null : f.path)}
+                    className="flex w-full items-center gap-3 px-5 py-2.5 text-left hover:bg-paper"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{f.path}</span>
+                    <DiffStat added={f.added} removed={f.removed} />
+                    <span className="shrink-0 text-muted">{isOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="px-5 pb-3">
+                      <CommitFileDiff id={d.id} file={f.path} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function CommitFileDiff({ id, file }: { id: string; file: string }) {
+  const { root } = useLocalRepo();
+  const query = useQuery({
+    queryKey: ["local-commit-diff", root, id, file],
+    queryFn: () => api.local.getCommitDiff(id, file),
+  });
+  if (query.isLoading) return <Spinner />;
+  if (query.isError) return <ErrorNote error={query.error} />;
+  return <DiffLines diff={query.data?.diff ?? ""} />;
 }
 
 function RefChip({ label }: { label: string }) {

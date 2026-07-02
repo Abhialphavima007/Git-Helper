@@ -309,7 +309,9 @@ export async function getGraph(root: string, limit = 60, all = true): Promise<Gr
   const fmt = ["%H", "%h", "%p", "%an", "%aI", "%s", "%D"].join(UNIT) + REC;
   const args = ["log", `--pretty=format:${fmt}`, `-n`, String(limit)];
   if (all) args.push("--all");
-  args.push("--topo-order");
+  // date-order keeps parallel branches interleaved by time, which packs lanes
+  // far tighter than topo-order (children still always precede parents).
+  args.push("--date-order");
 
   const raw = await runGit(root, args);
   return raw
@@ -333,6 +335,69 @@ export async function getGraph(root: string, limit = 60, all = true): Promise<Gr
         refs,
       };
     });
+}
+
+// ---- Commit detail (for the History view) ----
+
+export interface CommitDetail {
+  id: string;
+  full: string;
+  author: string;
+  email: string;
+  date: string | null;
+  subject: string;
+  body: string;
+  refs: string[];
+  parents: string[];
+  files: Array<{ path: string; added: number; removed: number }>;
+  totalAdded: number;
+  totalRemoved: number;
+}
+
+export async function getCommitDetail(root: string, sha: string): Promise<CommitDetail> {
+  const fmt = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b", "%D", "%p"].join(UNIT);
+  const metaRaw = await runGit(root, ["show", "--no-patch", `--pretty=format:${fmt}`, sha]);
+  const [full, id, author, email, date, subject, body, decoration, parents] = metaRaw.split(UNIT);
+
+  // numstat for the commit vs its first parent (root commits diff vs empty tree).
+  const numRaw = await runGit(root, ["show", "--numstat", "--format=", "--no-color", sha]);
+  const files = numRaw
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [a, r, ...rest] = line.split("\t");
+      return {
+        path: rest.join("\t"),
+        added: a === "-" ? 0 : Number(a) || 0,
+        removed: r === "-" ? 0 : Number(r) || 0,
+      };
+    });
+
+  const refs = (decoration || "")
+    .split(",")
+    .map((d) => d.trim().replace(/^HEAD -> /, "HEAD, "))
+    .flatMap((d) => d.split(",").map((s) => s.trim()))
+    .filter(Boolean);
+
+  return {
+    id,
+    full,
+    author: author || "",
+    email: email || "",
+    date: date || null,
+    subject: subject || "",
+    body: (body || "").trim(),
+    refs,
+    parents: parents ? parents.trim().split(" ").filter(Boolean) : [],
+    files,
+    totalAdded: files.reduce((n, f) => n + f.added, 0),
+    totalRemoved: files.reduce((n, f) => n + f.removed, 0),
+  };
+}
+
+// Diff of one file within a commit (vs its first parent).
+export async function commitFileDiff(root: string, sha: string, file: string): Promise<string> {
+  return runGit(root, ["show", "--no-color", "--format=", sha, "--", file]);
 }
 
 // ---- Conflicts ----

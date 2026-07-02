@@ -9,7 +9,11 @@ export default {
         ink: "#14181F",
         muted: "#5B6573",
         line: "#E2E6EC",
-        accent: { DEFAULT: "#3B5BDB", hover: "#314CC0" },
+        // Driven by CSS variables so the user can pick an accent theme at runtime.
+        accent: {
+          DEFAULT: "rgb(var(--accent) / <alpha-value>)",
+          hover: "rgb(var(--accent-hover) / <alpha-value>)",
+        },
         ok: { DEFAULT: "#1F8A53", bg: "#E7F4ED" },
         warn: { DEFAULT: "#B26A00", bg: "#FBF0DC" },
         danger: { DEFAULT: "#C2392F", bg: "#FBE9E7" },

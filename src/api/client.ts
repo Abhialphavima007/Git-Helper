@@ -181,6 +181,21 @@ export interface GraphCommit {
   refs: string[];
 }
 
+export interface CommitDetail {
+  id: string;
+  full: string;
+  author: string;
+  email: string;
+  date: string | null;
+  subject: string;
+  body: string;
+  refs: string[];
+  parents: string[];
+  files: Array<{ path: string; added: number; removed: number }>;
+  totalAdded: number;
+  totalRemoved: number;
+}
+
 export interface ConflictFile {
   path: string;
   hasBase: boolean;
@@ -389,6 +404,14 @@ export const api = {
 
     getGraph: (limit = 60, all = true) =>
       http<GraphCommit[]>(`/api/local/graph?limit=${limit}&all=${all ? 1 : 0}`),
+
+    getCommitDetail: (id: string) =>
+      http<CommitDetail>(`/api/local/commit-detail?id=${encodeURIComponent(id)}`),
+
+    getCommitDiff: (id: string, file: string) =>
+      http<{ id: string; file: string; diff: string }>(
+        `/api/local/commit-diff?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`
+      ),
 
     getDiff: (file: string, staged: boolean) =>
       http<{ file: string; staged: boolean; diff: string }>(
