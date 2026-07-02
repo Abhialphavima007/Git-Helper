@@ -34,12 +34,15 @@ export function LocalCommitPage() {
     onError: (err) => setActionError(err),
   });
 
+  const [amendMode, setAmendMode] = useState(false);
+
   const commitMutation = useMutation({
-    mutationFn: (msg: string) => api.local.commit(msg),
+    mutationFn: (msg: string) => (amendMode ? api.local.amend(msg) : api.local.commit(msg)),
     onSuccess: (res) => {
       applyState(res.state);
       setJustCommitted(res.committed);
       setMessage("");
+      setAmendMode(false);
       setActionError(null);
       // The graph and branch views are now stale.
       qc.invalidateQueries({ queryKey: ["local-graph"] });
@@ -48,10 +51,24 @@ export function LocalCommitPage() {
     onError: (err) => setActionError(err),
   });
 
+  const undoMutation = useMutation({
+    mutationFn: () => api.local.undoCommit(),
+    onSuccess: (next) => {
+      applyState(next);
+      setActionError(null);
+      setJustCommitted(null);
+      qc.invalidateQueries({ queryKey: ["local-graph"] });
+      qc.invalidateQueries({ queryKey: ["local-branches"] });
+    },
+    onError: (err) => setActionError(err),
+  });
+
   const s = stateQuery.data;
-  const busy = mutation.isPending || commitMutation.isPending;
+  const busy = mutation.isPending || commitMutation.isPending || undoMutation.isPending;
   const subject = message.split("\n")[0];
   const subjectLen = subject.trim().length;
+  // Undo/amend only make sense for a commit that hasn't been pushed yet.
+  const canRewrite = !!s?.headCommit && (!s.upstream || s.ahead > 0);
 
   return (
     <div className="space-y-6">
@@ -134,10 +151,13 @@ export function LocalCommitPage() {
 
           {/* Commit box */}
           <Card className="p-5">
-            <h2 className="font-display text-sm font-semibold text-ink">Commit message</h2>
+            <h2 className="font-display text-sm font-semibold text-ink">
+              {amendMode ? "Amend the last commit" : "Commit message"}
+            </h2>
             <p className="mt-1 text-xs text-muted">
-              A good first line is a short summary in the imperative — “Add login retry”, not “added stuff”. Leave a
-              blank line before any longer explanation.
+              {amendMode
+                ? "The staged changes and this message will replace the last commit."
+                : "A good first line is a short summary in the imperative — “Add login retry”, not “added stuff”. Leave a blank line before any longer explanation."}
             </p>
             <textarea
               className="mt-3 h-32 w-full resize-y rounded-lg border border-line bg-card px-3 py-2 font-mono text-sm text-ink focus-visible:border-accent"
@@ -152,17 +172,60 @@ export function LocalCommitPage() {
               </span>
               <span className="text-muted">{s.staged.length} file{s.staged.length === 1 ? "" : "s"} staged</span>
             </div>
-            <button
-              disabled={busy || subjectLen === 0 || s.staged.length === 0}
-              onClick={() => commitMutation.mutate(message.trim())}
-              className="mt-3 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
-            >
-              {commitMutation.isPending ? "Committing…" : "Commit"}
-            </button>
-            {s.staged.length === 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                disabled={busy || subjectLen === 0 || (!amendMode && s.staged.length === 0)}
+                onClick={() => commitMutation.mutate(message.trim())}
+                className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+              >
+                {commitMutation.isPending ? (amendMode ? "Amending…" : "Committing…") : amendMode ? "Amend commit" : "Commit"}
+              </button>
+              {canRewrite && (
+                <label className="flex items-center gap-1.5 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={amendMode}
+                    onChange={(e) => {
+                      setAmendMode(e.target.checked);
+                      if (e.target.checked && !message.trim() && s.headCommit) setMessage(s.headCommit.subject);
+                    }}
+                  />
+                  Amend the last commit instead
+                </label>
+              )}
+            </div>
+            {!amendMode && s.staged.length === 0 && (
               <p className="mt-2 text-xs text-muted">Stage at least one file to commit.</p>
             )}
           </Card>
+
+          {/* Last commit: undo (soft) while it hasn't been pushed */}
+          {s.headCommit && (
+            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="text-xs text-muted">Last commit</p>
+                <p className="truncate text-sm text-ink">
+                  <Mono>{s.headCommit.id}</Mono> {s.headCommit.subject}
+                </p>
+              </div>
+              <button
+                disabled={busy || !canRewrite}
+                title={
+                  canRewrite
+                    ? "Undo the commit but keep its changes staged"
+                    : "Already pushed — undoing would rewrite shared history"
+                }
+                onClick={() => {
+                  if (window.confirm("Undo the last commit? Its changes stay staged, so nothing is lost.")) {
+                    undoMutation.mutate();
+                  }
+                }}
+                className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-paper disabled:opacity-50"
+              >
+                {undoMutation.isPending ? "Undoing…" : "Undo last commit"}
+              </button>
+            </Card>
+          )}
         </>
       )}
     </div>

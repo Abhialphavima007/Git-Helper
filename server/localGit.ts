@@ -37,6 +37,8 @@ export interface RepoState {
   conflicted: RepoFile[];
   clean: boolean;
   merging: boolean; // a merge is in progress (MERGE_HEAD present)
+  headCommit: { id: string; subject: string } | null; // last commit (null in an empty repo)
+  stashCount: number;
 }
 
 const UNMERGED = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
@@ -62,7 +64,7 @@ function changeFromCode(x: string, y: string): FileChange {
 }
 
 // Parse `git status --porcelain=v1 -z --branch` into a structured state.
-function parseStatus(raw: string): Omit<RepoState, "merging"> {
+function parseStatus(raw: string): Omit<RepoState, "merging" | "headCommit" | "stashCount"> {
   const tokens = raw.split("\0");
   let branch: string | null = null;
   let detached = false;
@@ -189,7 +191,27 @@ export async function getState(root: string): Promise<RepoState> {
     /* no merge in progress */
   }
 
-  return { ...parsed, merging };
+  // Last commit (for the undo/amend UI) — absent in a brand-new repo.
+  let headCommit: RepoState["headCommit"] = null;
+  try {
+    const raw = (await runGit(root, ["log", "-1", `--pretty=%h${UNIT}%s`])).trim();
+    if (raw) {
+      const [id, subject] = raw.split(UNIT);
+      headCommit = { id, subject: subject || "" };
+    }
+  } catch {
+    /* no commits yet */
+  }
+
+  let stashCount = 0;
+  try {
+    const raw = await runGit(root, ["stash", "list", "--format=%gd"]);
+    stashCount = raw.split("\n").filter(Boolean).length;
+  } catch {
+    /* stash unavailable */
+  }
+
+  return { ...parsed, merging, headCommit, stashCount };
 }
 
 export interface BranchSummary {
@@ -432,6 +454,102 @@ export async function diffFile(root: string, file: string, staged: boolean): Pro
     }
   }
   return out;
+}
+
+// ---- Stash ----
+
+export interface StashEntry {
+  ref: string; // "stash@{0}"
+  message: string;
+}
+
+export async function stashList(root: string): Promise<StashEntry[]> {
+  const raw = await runGit(root, ["stash", "list", `--format=%gd${UNIT}%gs`]);
+  return raw
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [ref, message] = line.split(UNIT);
+      return { ref, message: message || "" };
+    });
+}
+
+// Stash everything (including untracked files, like GitHub Desktop does).
+export async function stashSave(root: string, message?: string): Promise<RepoState> {
+  const args = ["stash", "push", "--include-untracked"];
+  if (message && message.trim()) args.push("-m", message.trim());
+  await runGit(root, args);
+  return getState(root);
+}
+
+// Restore a stash. Conflicts are reported, not thrown, so the UI can route to
+// the resolver just like a merge.
+export async function stashPop(root: string, ref?: string): Promise<BranchActionResult> {
+  try {
+    await runGit(root, ref ? ["stash", "pop", ref] : ["stash", "pop"]);
+  } catch (e) {
+    const state = await getState(root);
+    if (state.conflicted.length > 0) return { ok: false, conflicts: true, state };
+    throw e;
+  }
+  return { ok: true, conflicts: false, state: await getState(root) };
+}
+
+export async function stashDrop(root: string, ref: string): Promise<RepoState> {
+  await runGit(root, ["stash", "drop", ref]);
+  return getState(root);
+}
+
+// ---- Discard / undo / amend ----
+
+// Throw away changes to specific files. Tracked files are restored from HEAD
+// (both index and working tree); untracked ones are deleted. Destructive —
+// the UI must confirm first.
+export async function discardFiles(root: string, files: string[]): Promise<RepoState> {
+  if (files.length === 0) return getState(root);
+  const state = await getState(root);
+  const untracked = new Set(state.untracked.map((f) => f.path));
+  const tracked = files.filter((f) => !untracked.has(f));
+  const toDelete = files.filter((f) => untracked.has(f));
+  if (tracked.length) await runGit(root, ["restore", "--staged", "--worktree", "--", ...tracked]);
+  if (toDelete.length) await runGit(root, ["clean", "-f", "--", ...toDelete]);
+  return getState(root);
+}
+
+// Undo the last commit but keep its changes staged (soft reset). Refused when
+// the commit is already on the upstream — rewriting published history bites.
+export async function undoLastCommit(root: string): Promise<RepoState> {
+  const state = await getState(root);
+  if (!state.headCommit) {
+    throw Object.assign(new Error("There is no commit to undo."), { name: "UndoError" });
+  }
+  if (state.upstream && state.ahead === 0) {
+    throw Object.assign(
+      new Error("The last commit is already pushed to the upstream. Undoing it would rewrite shared history — create a new commit instead."),
+      { name: "UndoError" }
+    );
+  }
+  await runGit(root, ["reset", "--soft", "HEAD~1"]);
+  return getState(root);
+}
+
+// Replace the last commit with the staged changes + a new message.
+// Same guard as undo: never rewrite a pushed commit.
+export async function amendCommit(root: string, message: string): Promise<CommitResult> {
+  const state = await getState(root);
+  if (!state.headCommit) {
+    throw Object.assign(new Error("There is no commit to amend."), { name: "AmendError" });
+  }
+  if (state.upstream && state.ahead === 0) {
+    throw Object.assign(
+      new Error("The last commit is already pushed to the upstream. Amending it would rewrite shared history."),
+      { name: "AmendError" }
+    );
+  }
+  await runGit(root, ["commit", "--amend", "-m", message]);
+  const id = (await runGit(root, ["rev-parse", "--short", "HEAD"])).trim();
+  const subject = (await runGit(root, ["log", "-1", "--pretty=%s"])).trim();
+  return { id, subject };
 }
 
 // ---- Remotes ----

@@ -137,6 +137,13 @@ export interface RepoState {
   conflicted: RepoFile[];
   clean: boolean;
   merging: boolean;
+  headCommit: { id: string; subject: string } | null;
+  stashCount: number;
+}
+
+export interface StashEntry {
+  ref: string;
+  message: string;
 }
 
 export interface LocalBranch {
@@ -449,6 +456,29 @@ export const api = {
       http<{ ok: boolean }>("/api/local/open-in-editor", {
         method: "POST",
         body: JSON.stringify(root ? { root } : {}),
+      }),
+
+    // ---- Advanced: stash / discard / undo / amend ----
+    stashList: () => http<StashEntry[]>("/api/local/stash"),
+
+    stashSave: (message?: string) =>
+      http<RepoState>("/api/local/stash", { method: "POST", body: JSON.stringify({ message }) }),
+
+    stashPop: (ref?: string) =>
+      http<BranchActionResult>("/api/local/stash/pop", { method: "POST", body: JSON.stringify({ ref }) }),
+
+    stashDrop: (ref: string) =>
+      http<RepoState>("/api/local/stash/drop", { method: "POST", body: JSON.stringify({ ref }) }),
+
+    discard: (files: string[]) =>
+      http<RepoState>("/api/local/discard", { method: "POST", body: JSON.stringify({ files }) }),
+
+    undoCommit: () => http<RepoState>("/api/local/undo-commit", { method: "POST" }),
+
+    amend: (message: string) =>
+      http<{ committed: { id: string; subject: string }; state: RepoState }>("/api/local/amend", {
+        method: "POST",
+        body: JSON.stringify({ message }),
       }),
   },
 };

@@ -25,6 +25,13 @@ import {
   branchCommits,
   compareBranches,
   compareFileDiff,
+  stashList,
+  stashSave,
+  stashPop,
+  stashDrop,
+  discardFiles,
+  undoLastCommit,
+  amendCommit,
 } from "../localGit";
 import { asyncRoute, requireLocalRepo } from "../session";
 
@@ -240,6 +247,83 @@ router.post(
     const root = res.locals.repoRoot as string;
     await resolveConflict(root, file, content);
     res.json({ resolved: file, state: await getState(root) });
+  })
+);
+
+// ---- Stash / discard / undo / amend ----
+
+// GET /api/local/stash  -> list of stashes
+router.get(
+  "/stash",
+  asyncRoute(async (_req, res) => {
+    res.json(await stashList(res.locals.repoRoot as string));
+  })
+);
+
+// POST /api/local/stash  { message? }  -> stash all changes (incl. untracked)
+router.post(
+  "/stash",
+  asyncRoute(async (req, res) => {
+    const message = typeof req.body?.message === "string" ? req.body.message : undefined;
+    res.json(await stashSave(res.locals.repoRoot as string, message));
+  })
+);
+
+// POST /api/local/stash/pop   { ref? }
+router.post(
+  "/stash/pop",
+  asyncRoute(async (req, res) => {
+    const ref = typeof req.body?.ref === "string" && req.body.ref ? req.body.ref : undefined;
+    res.json(await stashPop(res.locals.repoRoot as string, ref));
+  })
+);
+
+// POST /api/local/stash/drop  { ref }
+router.post(
+  "/stash/drop",
+  asyncRoute(async (req, res) => {
+    const ref = typeof req.body?.ref === "string" ? req.body.ref : "";
+    if (!ref) {
+      res.status(400).json({ error: "missing_ref", message: "A stash reference is required." });
+      return;
+    }
+    res.json(await stashDrop(res.locals.repoRoot as string, ref));
+  })
+);
+
+// POST /api/local/discard  { files }  -> throw away changes (destructive)
+router.post(
+  "/discard",
+  asyncRoute(async (req, res) => {
+    const files = asFileList(req.body?.files);
+    if (files.length === 0) {
+      res.status(400).json({ error: "missing_files", message: "At least one file is required." });
+      return;
+    }
+    res.json(await discardFiles(res.locals.repoRoot as string, files));
+  })
+);
+
+// POST /api/local/undo-commit  -> soft-reset the last (unpushed) commit
+router.post(
+  "/undo-commit",
+  asyncRoute(async (_req, res) => {
+    res.json(await undoLastCommit(res.locals.repoRoot as string));
+  })
+);
+
+// POST /api/local/amend  { message }  -> amend the last (unpushed) commit
+router.post(
+  "/amend",
+  asyncRoute(async (req, res) => {
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    if (!message) {
+      res.status(400).json({ error: "empty_message", message: "A commit message is required." });
+      return;
+    }
+    const root = res.locals.repoRoot as string;
+    const result = await amendCommit(root, message);
+    res.json({ committed: result, state: await getState(root) });
   })
 );
 

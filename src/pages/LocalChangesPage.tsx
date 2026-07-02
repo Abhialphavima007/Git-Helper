@@ -1,23 +1,43 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api, type RepoFile } from "../api/client";
+import { api, ApiError, type RepoFile } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { changeLabel } from "../lib/git";
 import { Card, ChangePill, DiffStat, ErrorNote, Mono, Spinner } from "../components/ui";
 import { DiffView } from "../components/DiffView";
+import { WorkflowStrip } from "../components/WorkflowStrip";
 
 // A read-focused, GitHub-style overview of everything that changed in the
 // working tree: per-file +/- counts and inline red/green diffs.
 export function LocalChangesPage() {
   const { root } = useLocalRepo();
+  const qc = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["local-state", root],
     queryFn: () => api.local.getState(),
     enabled: !!root,
   });
+
+  const discardM = useMutation({
+    mutationFn: (files: string[]) => api.local.discard(files),
+    onSuccess: (next) => {
+      qc.setQueryData(["local-state", root], next);
+      setActionError(null);
+    },
+    onError: (e) =>
+      setActionError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Discard failed."),
+  });
+
+  function confirmDiscard(file: RepoFile) {
+    const what = file.change === "untracked" ? "delete this new file" : "throw away all changes to this file";
+    if (window.confirm(`Discard ${file.path}?\n\nThis will ${what}. This cannot be undone.`)) {
+      discardM.mutate([file.path]);
+    }
+  }
 
   const s = query.data;
 
@@ -65,6 +85,9 @@ export function LocalChangesPage() {
 
       {query.isLoading && <Spinner label="Reading changes…" />}
       {query.isError && <ErrorNote error={query.error} />}
+      {actionError && <p className="text-sm text-danger">{actionError}</p>}
+
+      {s && <WorkflowStrip state={s} />}
 
       {s && rows.length === 0 && (
         <Card className="p-8 text-center text-sm text-muted">
@@ -93,16 +116,28 @@ export function LocalChangesPage() {
             const isOpen = expanded === key;
             return (
               <div key={key}>
-                <button
-                  onClick={() => setExpanded(isOpen ? null : key)}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-paper"
-                >
-                  <ChangePill light={cl.light}>{cl.text}</ChangePill>
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{r.file.path}</span>
-                  <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted">{r.bucket}</span>
-                  <DiffStat added={r.file.added} removed={r.file.removed} />
-                  <span className="shrink-0 text-muted">{isOpen ? "▾" : "▸"}</span>
-                </button>
+                <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-paper">
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : key)}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <ChangePill light={cl.light}>{cl.text}</ChangePill>
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{r.file.path}</span>
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted">{r.bucket}</span>
+                    <DiffStat added={r.file.added} removed={r.file.removed} />
+                    <span className="shrink-0 text-muted">{isOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {!r.file.conflicted && (
+                    <button
+                      onClick={() => confirmDiscard(r.file)}
+                      disabled={discardM.isPending}
+                      title="Throw away this change (cannot be undone)"
+                      className="shrink-0 rounded-md border border-line px-2 py-0.5 text-xs font-medium text-muted hover:bg-danger-bg hover:text-danger disabled:opacity-50"
+                    >
+                      Discard
+                    </button>
+                  )}
+                </div>
                 {isOpen && (
                   <div className="px-4 pb-3">
                     {r.file.conflicted ? (

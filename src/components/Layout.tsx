@@ -1,19 +1,11 @@
 import { useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import { useConnection } from "../context/ConnectionContext";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { TopProgressBar } from "./TopProgressBar";
 import { RepoSwitcher } from "./RepoSwitcher";
-
-const localNav = [
-  { to: "/local", label: "Status", end: true },
-  { to: "/local/changes", label: "Changes", end: false },
-  { to: "/local/commit", label: "Commit", end: false },
-  { to: "/local/branches", label: "Branches", end: false },
-  { to: "/local/compare", label: "Compare & merge", end: false },
-  { to: "/local/graph", label: "History", end: false },
-  { to: "/local/conflicts", label: "Resolve conflicts", end: false },
-];
 
 const azureNav = [
   { to: "/", label: "Dashboard", end: true },
@@ -31,9 +23,33 @@ function navClass({ isActive }: { isActive: boolean }) {
 
 export function Layout({ children }: { children: ReactNode }) {
   const { org, project, me, repos, selectedRepoId, selectRepo, disconnect, connected } = useConnection();
-  const { open: localOpen, localEnabled, close: closeLocal } = useLocalRepo();
+  const { open: localOpen, localEnabled, close: closeLocal, root } = useLocalRepo();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Shares the Status page's cache — cheap, and lets the nav show live badges
+  // (changed-file count) and only surface "Resolve conflicts" when relevant.
+  const stateQuery = useQuery({
+    queryKey: ["local-state", root],
+    queryFn: () => api.local.getState(),
+    enabled: localOpen && !!root,
+    staleTime: 15_000,
+  });
+  const st = stateQuery.data;
+  const dirtyCount = st ? st.unstaged.length + st.untracked.length + st.staged.length : 0;
+  const hasConflicts = !!st && st.conflicted.length > 0;
+
+  const localNav: Array<{ to: string; label: string; end: boolean; badge?: number; danger?: boolean }> = [
+    { to: "/local", label: "Status", end: true },
+    { to: "/local/changes", label: "Changes", end: false, badge: dirtyCount },
+    { to: "/local/commit", label: "Commit", end: false },
+    { to: "/local/branches", label: "Branches", end: false },
+    { to: "/local/compare", label: "Compare & merge", end: false },
+    { to: "/local/graph", label: "History", end: false },
+    ...(hasConflicts
+      ? [{ to: "/local/conflicts", label: "Resolve conflicts", end: false, badge: st!.conflicted.length, danger: true }]
+      : []),
+  ];
 
   const closeDrawer = () => setDrawerOpen(false);
 
@@ -97,7 +113,18 @@ export function Layout({ children }: { children: ReactNode }) {
               <nav className="mt-3 space-y-1">
                 {localNav.map((item) => (
                   <NavLink key={item.to} to={item.to} end={item.end} className={navClass} onClick={closeDrawer}>
-                    {item.label}
+                    <span className="flex items-center justify-between">
+                      {item.label}
+                      {item.badge !== undefined && item.badge > 0 && (
+                        <span
+                          className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                            item.danger ? "bg-danger text-white" : "bg-accent/15 text-accent"
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </span>
                   </NavLink>
                 ))}
               </nav>
