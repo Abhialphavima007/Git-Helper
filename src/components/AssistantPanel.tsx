@@ -43,6 +43,7 @@ export function AssistantPanel() {
   const [keyError, setKeyError] = useState<string | null>(null);
   const [provider, setProvider] = useState<"anthropic" | "gemini">("anthropic");
   const [mcpNote, setMcpNote] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const qc = useQueryClient();
   const { selectedRepoId } = useConnection();
   const { root } = useLocalRepo();
@@ -92,9 +93,31 @@ export function AssistantPanel() {
     try {
       await api.assistant.setKey(provider, keyInput.trim());
       setKeyInput("");
+      setShowSettings(false);
       qc.invalidateQueries({ queryKey: ["assistant-status"] });
     } catch (e) {
       setKeyError(e instanceof ApiError ? e.message : "Couldn't save the key.");
+    }
+  }
+
+  async function removeKey() {
+    setKeyError(null);
+    try {
+      await api.assistant.removeKey();
+      setShowSettings(false);
+      qc.invalidateQueries({ queryKey: ["assistant-status"] });
+    } catch (e) {
+      setKeyError(e instanceof ApiError ? e.message : "Couldn't remove the key.");
+    }
+  }
+
+  async function disconnectClaudeDesktop() {
+    setMcpNote(null);
+    try {
+      const r = await api.local.disconnectClaudeDesktop();
+      setMcpNote(`✅ ${r.message}`);
+    } catch (e) {
+      setMcpNote(`⚠️ ${e instanceof ApiError ? e.message : "Couldn't disconnect Claude Desktop."}`);
     }
   }
 
@@ -142,21 +165,63 @@ export function AssistantPanel() {
                 <h2 className="font-display text-sm font-semibold text-ink">Assistant</h2>
                 <p className="text-[11px] text-muted">Can check status, branch, commit, compare, push & pull, and open PRs.</p>
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                aria-label="Close assistant"
-                className="rounded-md border border-line p-1.5 text-muted hover:bg-paper hover:text-ink"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                  <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {status?.canConfigure && (
+                  <button
+                    onClick={() => {
+                      setShowSettings((v) => !v);
+                      setMcpNote(null);
+                      setKeyError(null);
+                    }}
+                    aria-label="Assistant settings"
+                    title="Settings: change or remove key, Claude Desktop"
+                    className={`rounded-md border border-line p-1.5 hover:bg-paper ${showSettings ? "text-accent" : "text-muted hover:text-ink"}`}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  onClick={() => setOpen(false)}
+                  aria-label="Close assistant"
+                  className="rounded-md border border-line p-1.5 text-muted hover:bg-paper hover:text-ink"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
-            {/* Setup state */}
-            {status && !status.configured ? (
+            {/* Setup / settings state */}
+            {status && (!status.configured || showSettings) ? (
               <div className="flex-1 overflow-y-auto p-4">
-                <h3 className="font-display text-sm font-semibold text-ink">One-time setup</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-display text-sm font-semibold text-ink">
+                    {status.configured ? "Assistant settings" : "One-time setup"}
+                  </h3>
+                  {status.configured && (
+                    <button onClick={() => setShowSettings(false)} className="text-xs font-medium text-accent hover:underline">
+                      ← Back to chat
+                    </button>
+                  )}
+                </div>
+                {status.configured && (
+                  <div className="mt-2 flex items-center justify-between rounded-lg bg-paper px-3 py-2">
+                    <p className="text-sm text-ink">
+                      Using <b>{status.provider === "gemini" ? "Gemini" : "Claude"}</b>
+                      <span className="text-muted"> — paste a new key below to switch or update.</span>
+                    </p>
+                    <button
+                      onClick={removeKey}
+                      className="shrink-0 rounded-md border border-line px-2.5 py-1 text-xs font-medium text-danger hover:bg-card"
+                    >
+                      Remove key
+                    </button>
+                  </div>
+                )}
                 {status.canConfigure ? (
                   <>
                     <p className="mt-1.5 text-sm text-muted">
@@ -215,12 +280,21 @@ export function AssistantPanel() {
                           Have the <b>Claude Desktop app</b>? Connect it once and chat with your repos there — runs on
                           your Claude subscription, no API key.
                         </p>
-                        <button
-                          onClick={connectClaudeDesktop}
-                          className="mt-2 w-full rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-paper"
-                        >
-                          Connect Claude Desktop
-                        </button>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={connectClaudeDesktop}
+                            className="flex-1 rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-paper"
+                          >
+                            Connect Claude Desktop
+                          </button>
+                          <button
+                            onClick={disconnectClaudeDesktop}
+                            title="Remove Git Helper from Claude Desktop"
+                            className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-muted hover:bg-paper hover:text-danger"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
                         {mcpNote && <p className="mt-2 text-xs text-muted">{mcpNote}</p>}
                       </>
                     )}

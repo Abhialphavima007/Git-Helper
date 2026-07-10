@@ -405,6 +405,17 @@ the same thing from the command line.)*
 The in-app chat bubble and Claude Desktop work independently — use either or
 both.
 
+### Changing or removing keys, and disconnecting
+
+Click the **gear icon** in the assistant panel's header to open its settings:
+
+- **Switch provider or update the key** — pick Claude or Gemini and paste a
+  new key; it replaces the old one.
+- **Remove key** — deletes the stored key (the setup screen returns).
+- **Disconnect** (next to Connect Claude Desktop) — removes Git Helper from
+  Claude Desktop. Same rule as connecting: quit Claude Desktop first, or it
+  may restore the entry when it exits.
+
 ## 16. Auto-commit
 
 On the [Status page](#4-status--your-home-screen), the **Auto-commit** card

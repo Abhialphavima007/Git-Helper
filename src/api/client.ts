@@ -516,6 +516,9 @@ export const api = {
         { method: "POST" }
       ),
 
+    disconnectClaudeDesktop: () =>
+      http<{ ok: boolean; message: string }>("/api/local/disconnect-claude-desktop", { method: "POST" }),
+
     // ---- Advanced: stash / discard / undo / amend ----
     stashList: () => http<StashEntry[]>("/api/local/stash"),
 
@@ -546,6 +549,9 @@ export const api = {
 
     setKey: (provider: "anthropic" | "gemini", key: string) =>
       http<{ configured: boolean }>("/api/assistant/key", { method: "POST", body: JSON.stringify({ provider, key }) }),
+
+    removeKey: () =>
+      http<{ configured: boolean }>("/api/assistant/key", { method: "POST", body: JSON.stringify({ provider: "anthropic", key: "" }) }),
 
     chat: (messages: Array<{ role: "user" | "assistant"; content: string }>, azureRepoId?: string | null) =>
       http<AssistantChatResult>("/api/assistant/chat", {

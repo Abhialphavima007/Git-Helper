@@ -113,3 +113,34 @@ export async function connectClaudeDesktop(connection: Connection | null): Promi
 
   return { ok: true, configPath: cfgPath, azureIncluded, claudeWasRunning, message };
 }
+
+// Remove Git Helper from Claude Desktop's config (the reverse of connect).
+export async function disconnectClaudeDesktop(): Promise<ConnectResult> {
+  const cfgPath = configPath();
+  if (!existsSync(cfgPath)) {
+    return { ok: true, configPath: cfgPath, azureIncluded: false, claudeWasRunning: false, message: "Nothing to disconnect — Claude Desktop has no Git Helper entry." };
+  }
+
+  await fs.copyFile(cfgPath, cfgPath + ".backup");
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(await fs.readFile(cfgPath, "utf8"));
+  } catch {
+    throw new Error("Claude Desktop's config file couldn't be read — fix or remove it manually.");
+  }
+
+  const servers = (config.mcpServers as Record<string, unknown> | undefined) ?? {};
+  const existed = "git-helper" in servers;
+  delete servers["git-helper"];
+  config.mcpServers = servers;
+  await fs.writeFile(cfgPath, JSON.stringify(config, null, 2), "utf8");
+
+  const claudeWasRunning = await isClaudeDesktopRunning();
+  const message = !existed
+    ? "Nothing to disconnect — Claude Desktop had no Git Helper entry."
+    : claudeWasRunning
+      ? "Removed. Claude Desktop is running, so quit it completely (File → Exit) and click Disconnect once more to make sure it doesn't restore the entry on exit — then start it again."
+      : "Disconnected. Git Helper will no longer appear in Claude Desktop.";
+
+  return { ok: true, configPath: cfgPath, azureIncluded: false, claudeWasRunning, message };
+}

@@ -146,6 +146,16 @@ router.post(
   })
 );
 
+// POST /api/local/disconnect-claude-desktop
+// Removes Git Helper's MCP entry from Claude Desktop's config.
+router.post(
+  "/disconnect-claude-desktop",
+  asyncRoute(async (_req, res) => {
+    const { disconnectClaudeDesktop } = await import("../claudeDesktop");
+    res.json(await disconnectClaudeDesktop());
+  })
+);
+
 // POST /api/local/open-in-editor  { root? }
 // Open a known repo in VS Code; defaults to the currently selected one.
 router.post(
