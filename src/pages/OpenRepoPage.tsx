@@ -44,7 +44,31 @@ export function OpenRepoPage() {
           {repos.map((r) => (
             <Card key={r.root} className="flex items-center justify-between gap-3 p-4">
               <button onClick={() => onSelect(r.root)} disabled={busy} className="min-w-0 text-left">
-                <p className="truncate font-display text-sm font-semibold text-ink hover:text-accent">{r.name}</p>
+                <p className="flex flex-wrap items-center gap-1.5 font-display text-sm font-semibold text-ink hover:text-accent">
+                  <span className="truncate">{r.name}</span>
+                  {r.branch && (
+                    <span className="rounded bg-line px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted">{r.branch}</span>
+                  )}
+                  {r.detached && (
+                    <span
+                      className="rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-danger"
+                      title="Not on any branch — open this repo and visit Recovery & sync"
+                    >
+                      detached
+                    </span>
+                  )}
+                  {!!r.stashCount && (
+                    <span
+                      className="rounded bg-warn/10 px-1.5 py-0.5 text-[10px] font-medium text-ink"
+                      title="Stashed changes waiting — restore them from Status or Recovery & sync"
+                    >
+                      {r.stashCount} stashed change set{r.stashCount === 1 ? "" : "s"} waiting
+                    </span>
+                  )}
+                  {r.dirty && (
+                    <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">uncommitted changes</span>
+                  )}
+                </p>
                 <p className="truncate text-xs text-muted" title={r.root}>
                   <Mono>{r.root}</Mono> · added {timeAgo(r.addedAt)}
                 </p>

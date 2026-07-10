@@ -30,7 +30,8 @@ state in plain language, shows the next safe step, and covers the whole loop:
 15. [AI assistant](#15-ai-assistant)
 16. [Auto-commit](#16-auto-commit)
 17. [Undo & restore — take something back](#17-undo--restore--take-something-back)
-18. [Troubleshooting](#18-troubleshooting)
+18. [Recovery & sync — the repo check-up](#18-recovery--sync--the-repo-check-up)
+19. [Troubleshooting](#19-troubleshooting)
 
 ---
 
@@ -364,6 +365,24 @@ to it"* · *"Stage everything and commit with a sensible message"* · *"Compare
 my branch with master and tell me if it's safe to merge"* · *"Open a PR from
 my branch into main"*.
 
+### What you can ask it to do
+
+| You say (in plain words) | It does |
+|---|---|
+| "What changed in my repo?" / "Where do I stand?" | Reads status: branch, ahead/behind, changed files, conflicts |
+| "Commit my work with a good message" | Stages everything and writes a sensible commit message for you |
+| "Make a branch for this fix and switch to it" | Creates + checks out the branch |
+| "Switch back to main" | Checks out the branch |
+| "Is it safe to merge my branch into master?" | Compares the branches and summarizes commits/files/conflict risk |
+| "Set my changes aside" / "bring them back" | Stash and restore |
+| "Get me up to date" / "send my commits up" | Fetch, pull, push (same rules as the buttons) |
+| "List the open PRs" / "open a PR to main" | Azure DevOps: lists branches/PRs, creates a pull request |
+| "Which of my repos have uncommitted work?" | Checks every repository on your list |
+
+The same questions work in **Claude Desktop** once connected (below) — and
+there you also get Claude's general reasoning on top, e.g. *"look at my repos
+and tell me what I should finish first."*
+
 **Safety:** the assistant never discards changes, deletes branches, rewrites
 pushed history, or completes merges/PRs — those stay manual. If it hits a
 conflict it stops and sends you to the resolver.
@@ -471,7 +490,44 @@ to the conflict resolver, same as a merge.
 the branch changes until you complete that PR, so an undo is always reviewed
 and never rewrites shared history.
 
-## 18. Troubleshooting
+## 18. Recovery & sync — the repo check-up
+
+Sidebar → **Recovery & sync**. Think of it as the repo doctor: it **fetches
+the latest remote info first** (so the numbers are honest), scans for
+situations that usually confuse people, and shows a card for each one it
+finds. Every card:
+
+- explains the situation **in plain language**,
+- shows the **exact git command** it would run,
+- and **never executes anything without a confirm** — truly destructive
+  actions additionally require you to *type a word* (e.g. `discard`) so a
+  reflexive click can't cause damage.
+
+What it detects and offers:
+
+| Situation | What the card offers |
+|---|---|
+| **Local commits not on the remote** | Reset the branch to exactly match the remote. If your commits net to **zero file changes** (add-then-delete noise), it says *"Safe — no file changes will be lost"*; otherwise it lists in red every file whose local version would be lost |
+| **Your last commit is a merge** (accidental pull) | Explains that the remote is NOT affected until you push; one click undoes the merge, or keep it and push |
+| **Committed too early / wrong message** | Points to Undo last commit — changes stay staged, only the commit is undone (blocked once pushed) |
+| **Uncommitted changes you don't want** | Lists every file, then offers **"Stash instead (safe)"** first, and "Discard everything" behind a typed confirmation |
+| **Commits on a teammate's branch** | Detects that most of the branch's pushed history belongs to someone else ("This looks like Dhrumil's branch") and offers to **move your commits to a new branch** and put theirs back exactly as it was |
+| **Detached HEAD** ("not on any branch") | Warns that commits made here can be lost; save the spot to a new branch in one click, or jump to an existing branch |
+| **Far behind the remote** (10+ commits) | Yellow — red at 30+ — "Your copy is outdated by N commits", with plain words on what pulling will do (fast-forward vs merge with your local commits) |
+| **Forgotten stashes** | "N stashed change sets waiting" with one-click restore — the same badge also appears on the repository picker cards |
+
+**Safe-push check:** when you push a branch whose history mostly belongs to a
+teammate, the push confirmation adds a warning — *"This looks like …'s
+branch"* — and suggests your own branch + a Pull Request instead. You can
+still push if you two agreed to share the branch.
+
+**Action history with undo notes:** at the bottom of the page, everything Git
+Helper did in this repo (pushes, pulls, resets, reverts, recoveries…) is
+listed newest-first, each entry with a **"How to undo"** note — usually
+pointing at the Rescue list in [Undo & restore](#17-undo--restore--take-something-back),
+which can jump back to any recent position for ~90 days.
+
+## 19. Troubleshooting
 
 | Problem | Fix |
 |---|---|

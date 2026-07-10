@@ -713,6 +713,176 @@ export async function getReflog(root: string, limit = 30): Promise<ReflogEntry[]
     });
 }
 
+// ---- Recovery & sync scenarios ----
+
+export interface ScenarioCommit {
+  id: string;
+  full: string;
+  subject: string;
+  author: string;
+  email: string;
+  date: string;
+}
+
+// Everything the Recovery page needs to detect its situations in one call.
+// Pure inspection — nothing here changes the repository.
+export interface ScenarioReport {
+  branch: string | null;
+  detached: boolean;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  clean: boolean;
+  dirtyFiles: string[]; // staged + unstaged + untracked paths
+  stashCount: number;
+  stashes: StashEntry[];
+  userName: string;
+  userEmail: string;
+  aheadCommits: ScenarioCommit[]; // commits a reset-to-remote would discard
+  aheadFiles: string[]; // net file differences vs upstream ([] = noise commits)
+  headIsMergeByUser: boolean; // HEAD is a merge commit the current user authored
+  dominantAuthor: { name: string; email: string; share: number } | null; // who mostly owns this branch's pushed history
+  looksLikeOthersBranch: boolean;
+  localBranches: string[]; // for the detached-HEAD rescue picker
+}
+
+export async function getScenarioReport(root: string): Promise<ScenarioReport> {
+  const state = await getState(root);
+
+  const userName = (await runGit(root, ["config", "user.name"]).catch(() => "")).trim();
+  const userEmail = (await runGit(root, ["config", "user.email"]).catch(() => "")).trim();
+
+  // Commits that exist locally but not on the upstream.
+  let aheadCommits: ScenarioCommit[] = [];
+  let aheadFiles: string[] = [];
+  if (state.upstream && state.ahead > 0) {
+    const raw = await runGit(root, [
+      "log",
+      `${state.upstream}..HEAD`,
+      `--format=%h${UNIT}%H${UNIT}%s${UNIT}%an${UNIT}%ae${UNIT}%aI`,
+    ]).catch(() => "");
+    aheadCommits = raw
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [id, full, subject, author, email, date] = line.split(UNIT);
+        return { id, full, subject, author, email, date };
+      });
+    // Net content difference vs the remote. Empty while ahead>0 means the
+    // local commits cancel out (noise) — a reset loses no file content.
+    const diff = await runGit(root, ["diff", "--name-only", `${state.upstream}..HEAD`]).catch(() => "");
+    aheadFiles = diff.split("\n").filter(Boolean);
+  }
+
+  // Is HEAD a merge commit the current user made (the "accidental pull")?
+  let headIsMergeByUser = false;
+  if (state.headCommit) {
+    const raw = (await runGit(root, ["log", "-1", `--format=%P${UNIT}%ae`]).catch(() => "")).trim();
+    const [parents, email] = raw.split(UNIT);
+    headIsMergeByUser = (parents?.trim().split(/\s+/).length ?? 0) > 1 && !!email && email === userEmail;
+  }
+
+  // Who does this branch's pushed history belong to? Look at the last 30
+  // commits on the upstream: if one other person authored most of them, the
+  // branch probably belongs to that teammate.
+  let dominantAuthor: ScenarioReport["dominantAuthor"] = null;
+  let looksLikeOthersBranch = false;
+  if (state.upstream) {
+    const raw = await runGit(root, ["log", state.upstream, "-30", `--format=%an${UNIT}%ae`]).catch(() => "");
+    const counts = new Map<string, { name: string; email: string; n: number }>();
+    const lines = raw.split("\n").filter(Boolean);
+    for (const line of lines) {
+      const [name, email] = line.split(UNIT);
+      const cur = counts.get(email) ?? { name, email, n: 0 };
+      cur.n++;
+      counts.set(email, cur);
+    }
+    const top = [...counts.values()].sort((a, b) => b.n - a.n)[0];
+    if (top && lines.length >= 3) {
+      const share = top.n / lines.length;
+      dominantAuthor = { name: top.name, email: top.email, share: Math.round(share * 100) };
+      const isProtectedName = /^(main|master|develop|dev|release\/.*)$/i.test(state.branch ?? "");
+      looksLikeOthersBranch = !isProtectedName && top.email !== userEmail && share >= 0.6;
+    }
+  }
+
+  const stashes = await stashList(root).catch(() => [] as StashEntry[]);
+  const branches = await getBranches(root).catch(() => [] as BranchSummary[]);
+
+  return {
+    branch: state.branch,
+    detached: state.detached,
+    upstream: state.upstream,
+    ahead: state.ahead,
+    behind: state.behind,
+    clean: state.clean,
+    dirtyFiles: [...state.staged, ...state.unstaged, ...state.untracked].map((f) => f.path),
+    stashCount: state.stashCount,
+    stashes,
+    userName,
+    userEmail,
+    aheadCommits,
+    aheadFiles,
+    headIsMergeByUser,
+    dominantAuthor,
+    looksLikeOthersBranch,
+    localBranches: branches.filter((b) => !b.isRemote).map((b) => b.name),
+  };
+}
+
+// Scenario 1/2/10: make the local branch identical to its upstream again,
+// discarding local-only commits. Refused while the working tree is dirty —
+// this action is about commits, and a hard reset would silently take the
+// uncommitted edits with it. Returns the pre-reset HEAD for the undo note.
+export async function resetToRemote(root: string): Promise<{ state: RepoState; prevHead: string }> {
+  const state = await getState(root);
+  if (!state.upstream) {
+    throw Object.assign(new Error("This branch has no upstream to reset to."), { name: "RecoveryError" });
+  }
+  if (!state.clean) {
+    throw Object.assign(
+      new Error("You have uncommitted changes. Stash or discard them first — this action only discards local commits."),
+      { name: "RecoveryError" }
+    );
+  }
+  const prevHead = (await runGit(root, ["rev-parse", "HEAD"])).trim();
+  await runGit(root, ["reset", "--hard", state.upstream]);
+  return { state: await getState(root), prevHead };
+}
+
+// Scenario 4: throw away every uncommitted change — tracked edits restored
+// from HEAD, untracked files and folders deleted. Unrecoverable; the UI
+// double-confirms and offers stash as the safe alternative.
+export async function discardAll(root: string): Promise<RepoState> {
+  await runGit(root, ["restore", "--staged", "--worktree", "."]).catch(() => undefined); // fails harmlessly in an empty repo
+  await runGit(root, ["clean", "-fd"]);
+  return getState(root);
+}
+
+// Scenario 5: commits landed on the wrong branch. Park them on a new branch
+// at HEAD, put this branch back to exactly its upstream, and switch to the
+// new branch so the user keeps working on their own commits.
+export async function moveCommitsToNewBranch(
+  root: string,
+  newBranch: string
+): Promise<{ state: RepoState; prevHead: string }> {
+  const state = await getState(root);
+  if (!state.upstream || state.ahead === 0) {
+    throw Object.assign(new Error("There are no local-only commits to move."), { name: "RecoveryError" });
+  }
+  if (!state.clean) {
+    throw Object.assign(
+      new Error("You have uncommitted changes. Commit, stash or discard them first so nothing is lost in the move."),
+      { name: "RecoveryError" }
+    );
+  }
+  const prevHead = (await runGit(root, ["rev-parse", "HEAD"])).trim();
+  await runGit(root, ["branch", newBranch]); // clear error if the name exists
+  await runGit(root, ["reset", "--hard", state.upstream]);
+  await runGit(root, ["checkout", newBranch]);
+  return { state: await getState(root), prevHead };
+}
+
 // ---- Remotes ----
 
 export interface Remote {

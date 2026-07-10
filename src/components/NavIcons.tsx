@@ -68,6 +68,13 @@ export const Icons = {
       <path d="M3 13a9 9 0 1 0 3-7.7L3 7" />
     </Base>
   ),
+  rescue: (
+    <Base>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 3v5.5M12 15.5V21M3 12h5.5M15.5 12H21" />
+    </Base>
+  ),
   dashboard: (
     <Base>
       <rect x="3" y="3" width="7" height="9" rx="1.5" />

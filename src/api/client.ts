@@ -156,6 +156,44 @@ export interface ReflogEntry {
   date: string;
 }
 
+export interface ScenarioCommit {
+  id: string;
+  full: string;
+  subject: string;
+  author: string;
+  email: string;
+  date: string;
+}
+
+export interface ScenarioReport {
+  branch: string | null;
+  detached: boolean;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  clean: boolean;
+  dirtyFiles: string[];
+  stashCount: number;
+  stashes: StashEntry[];
+  userName: string;
+  userEmail: string;
+  aheadCommits: ScenarioCommit[];
+  aheadFiles: string[];
+  headIsMergeByUser: boolean;
+  dominantAuthor: { name: string; email: string; share: number } | null;
+  looksLikeOthersBranch: boolean;
+  localBranches: string[];
+  fetchError: string | null;
+}
+
+export interface ActionEntry {
+  ts: string;
+  root: string;
+  action: string;
+  detail: string;
+  undo: string;
+}
+
 export interface LocalBranch {
   name: string;
   ref: string;
@@ -239,6 +277,10 @@ export interface StoredRepo {
   root: string;
   name: string;
   addedAt: string;
+  branch?: string | null;
+  detached?: boolean;
+  stashCount?: number;
+  dirty?: boolean;
   autoCommit?: AutoCommitConfig;
 }
 
@@ -567,6 +609,23 @@ export const api = {
       http<RepoState>("/api/local/reset", { method: "POST", body: JSON.stringify({ id, mode, force }) }),
 
     reflog: (limit = 30) => http<ReflogEntry[]>(`/api/local/reflog?limit=${limit}`),
+
+    // ---- Recovery & sync scenarios ----
+    scenarios: (fetchFirst = true) =>
+      http<ScenarioReport>(`/api/local/scenarios${fetchFirst ? "?fetch=1" : ""}`),
+
+    resetToRemote: () =>
+      http<{ state: RepoState; prevHead: string }>("/api/local/recovery/reset-to-remote", { method: "POST" }),
+
+    discardAll: () => http<RepoState>("/api/local/recovery/discard-all", { method: "POST" }),
+
+    moveCommits: (name: string) =>
+      http<{ state: RepoState; prevHead: string }>("/api/local/recovery/move-commits", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+
+    actions: () => http<ActionEntry[]>("/api/local/actions"),
   },
 
   // ---- AI assistant ----

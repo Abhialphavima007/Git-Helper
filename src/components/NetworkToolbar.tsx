@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, type RepoState } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
@@ -65,6 +65,17 @@ export function NetworkToolbar({ state }: { state: RepoState }) {
 
   const busy = fetchM.isPending || pullM.isPending || pushM.isPending;
   const btn = "rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-paper disabled:opacity-50";
+
+  // Safe-push check: when the push dialog opens, quietly look at who owns
+  // this branch's pushed history so we can warn before touching a teammate's
+  // branch (no fetch — this must be instant).
+  const ownerQuery = useQuery({
+    queryKey: ["local-scenarios-lite", root],
+    queryFn: () => api.local.scenarios(false),
+    enabled: pending === "push",
+    staleTime: 60_000,
+  });
+  const othersBranch = ownerQuery.data?.looksLikeOthersBranch ? ownerQuery.data.dominantAuthor : null;
 
   const branchLabel = state.branch ?? "(detached)";
   const upstreamLabel = state.upstream ?? `origin/${state.branch ?? ""}`;
@@ -166,6 +177,14 @@ export function NetworkToolbar({ state }: { state: RepoState }) {
           <ConfirmRow label="What it affects:">
             The branch on Azure DevOps — teammates will see these commits. Your local files don't change.
           </ConfirmRow>
+          {othersBranch && (
+            <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-ink">
+              ⚠ This looks like <b>{othersBranch.name}</b>'s branch ({othersBranch.share}% of its recent pushed
+              commits are theirs). Consider your own branch + a Pull Request instead — or push anyway if you two
+              agreed to share it. The <span className="font-mono">Recovery &amp; sync</span> page can move your
+              commits to a new branch.
+            </p>
+          )}
           {state.behind > 0 && (
             <p className="rounded-lg bg-warn/10 px-3 py-2 text-xs text-ink">
               ⚠ You're also <b>{state.behind} behind</b> — Azure may reject this push until you Pull first.

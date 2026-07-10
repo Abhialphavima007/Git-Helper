@@ -37,8 +37,13 @@ import {
   getReflog,
   getCommitDetail,
   commitFileDiff,
+  getScenarioReport,
+  resetToRemote,
+  discardAll,
+  moveCommitsToNewBranch,
   type ResetMode,
 } from "../localGit";
+import { logAction, listActions } from "../actionLog";
 import { asyncRoute, requireLocalRepo } from "../session";
 
 const router = Router();
@@ -67,12 +72,24 @@ router.get("/repo", (req, res) => {
   res.json({ open: !!repo, root: repo?.root ?? null, name: repo?.name ?? null });
 });
 
-// GET /api/local/repos -> the full known-repository list + last opened + current
+// GET /api/local/repos -> the full known-repository list + last opened + current.
+// Each repo gets a quick health peek (branch, stash count, detached) so the
+// picker can badge "N stashed change sets waiting" etc. Best-effort per repo.
 router.get(
   "/repos",
   asyncRoute(async (req, res) => {
     const { repos, lastOpened } = await listRepos();
-    res.json({ repos, lastOpened, current: req.session.localRepo?.root ?? null });
+    const withInfo = await Promise.all(
+      repos.map(async (r) => {
+        try {
+          const s = await getState(r.root);
+          return { ...r, branch: s.branch, detached: s.detached, stashCount: s.stashCount, dirty: !s.clean };
+        } catch {
+          return { ...r, branch: null, detached: false, stashCount: 0, dirty: false };
+        }
+      })
+    );
+    res.json({ repos: withInfo, lastOpened, current: req.session.localRepo?.root ?? null });
   })
 );
 
@@ -391,7 +408,16 @@ router.post(
 router.post(
   "/undo-commit",
   asyncRoute(async (_req, res) => {
-    res.json(await undoLastCommit(res.locals.repoRoot as string));
+    const root = res.locals.repoRoot as string;
+    const prev = (await getState(root)).headCommit;
+    const state = await undoLastCommit(root);
+    await logAction({
+      root,
+      action: "Undo last commit",
+      detail: `Removed commit ${prev?.id ?? ""} "${prev?.subject ?? ""}" — its changes are staged again.`,
+      undo: "Nothing is lost: the changes are staged. Commit again, or Rescue back to the old commit from Undo & restore.",
+    });
+    res.json(state);
   })
 );
 
@@ -420,7 +446,17 @@ router.post(
       res.status(400).json({ error: "missing_id", message: "A commit id is required." });
       return;
     }
-    res.json(await revertCommit(res.locals.repoRoot as string, id));
+    const root = res.locals.repoRoot as string;
+    const result = await revertCommit(root, id);
+    if (result.ok) {
+      await logAction({
+        root,
+        action: "Revert commit",
+        detail: `Created a new commit that cancels ${id.slice(0, 8)}.`,
+        undo: `Revert the revert: Undo & restore → Revert a commit, pick the new "Revert …" commit. (Or undo it before pushing via Undo last commit.)`,
+      });
+    }
+    res.json(result);
   })
 );
 
@@ -440,7 +476,16 @@ router.post(
       res.status(400).json({ error: "bad_mode", message: "mode must be soft, mixed or hard." });
       return;
     }
-    res.json(await resetToCommit(res.locals.repoRoot as string, id, mode, !!req.body?.force));
+    const root = res.locals.repoRoot as string;
+    const prevHead = (await getState(root)).headCommit?.id ?? "";
+    const state = await resetToCommit(root, id, mode, !!req.body?.force);
+    await logAction({
+      root,
+      action: mode === "hard" ? "Rewind branch (discard)" : "Rewind branch",
+      detail: `Moved ${state.branch ?? "the branch"} from ${prevHead} to ${id.slice(0, 8)} (${mode} reset).`,
+      undo: `Recovery is possible for ~90 days: Undo & restore → Rescue, jump back to ${prevHead}.`,
+    });
+    res.json(state);
   })
 );
 
@@ -450,6 +495,100 @@ router.get(
   asyncRoute(async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 30, 100);
     res.json(await getReflog(res.locals.repoRoot as string, limit));
+  })
+);
+
+// ---- Recovery & sync scenarios ----
+
+// GET /api/local/scenarios?fetch=1
+// Inspect the repo for recoverable situations. With fetch=1 the remote is
+// contacted first so ahead/behind is accurate; a fetch failure (offline, not
+// connected) degrades to a scan of what's known locally, with a note.
+router.get(
+  "/scenarios",
+  asyncRoute(async (req, res) => {
+    const root = res.locals.repoRoot as string;
+    let fetchError: string | null = null;
+    if (req.query.fetch === "1") {
+      try {
+        const remotes = await getRemotes(root);
+        const pat = req.session.connection?.pat;
+        if (remotes.some((r) => r.isAzure) && !pat) {
+          fetchError = "Not connected to Azure DevOps, so the remote wasn't checked — ahead/behind may be stale.";
+        } else if (remotes.length > 0) {
+          await fetchRemote(root, pat ? azureAuthArgs(pat) : []);
+        }
+      } catch (e) {
+        fetchError = e instanceof Error ? e.message : "Fetch failed — showing locally-known numbers.";
+      }
+    }
+    res.json({ ...(await getScenarioReport(root)), fetchError });
+  })
+);
+
+// POST /api/local/recovery/reset-to-remote
+// Make the branch identical to its upstream, discarding local-only commits.
+router.post(
+  "/recovery/reset-to-remote",
+  asyncRoute(async (req, res) => {
+    const root = res.locals.repoRoot as string;
+    const { state, prevHead } = await resetToRemote(root);
+    await logAction({
+      root,
+      action: "Reset to remote",
+      detail: `Made ${state.branch ?? "the branch"} identical to ${state.upstream ?? "its upstream"} (was at ${prevHead.slice(0, 8)}).`,
+      undo: `Recovery is possible for ~90 days: Undo & restore → Rescue, jump to ${prevHead.slice(0, 8)} (or run: git reset --hard ${prevHead.slice(0, 8)}).`,
+    });
+    res.json({ state, prevHead });
+  })
+);
+
+// POST /api/local/recovery/discard-all
+// Throw away every uncommitted change (restore . + clean -fd). Unrecoverable.
+router.post(
+  "/recovery/discard-all",
+  asyncRoute(async (_req, res) => {
+    const root = res.locals.repoRoot as string;
+    const before = await getState(root);
+    const dirty = before.staged.length + before.unstaged.length + before.untracked.length;
+    const state = await discardAll(root);
+    await logAction({
+      root,
+      action: "Discard all changes",
+      detail: `Discarded ${dirty} uncommitted file change${dirty === 1 ? "" : "s"} (git restore . + git clean -fd).`,
+      undo: "Uncommitted changes are not recoverable once discarded — that's why this action double-confirms. (A stash would have been reversible.)",
+    });
+    res.json(state);
+  })
+);
+
+// POST /api/local/recovery/move-commits  { name }
+// Park the local-only commits on a new branch and reset this one to upstream.
+router.post(
+  "/recovery/move-commits",
+  asyncRoute(async (req, res) => {
+    const root = res.locals.repoRoot as string;
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    if (!name) {
+      res.status(400).json({ error: "missing_name", message: "A name for the new branch is required." });
+      return;
+    }
+    const { state, prevHead } = await moveCommitsToNewBranch(root, name);
+    await logAction({
+      root,
+      action: "Move commits to new branch",
+      detail: `Moved local-only commits to new branch "${name}" and reset the original branch to its upstream. Now on ${state.branch}.`,
+      undo: `Your commits are safe on "${name}". To undo the move entirely: check out the original branch and run git reset --hard ${prevHead.slice(0, 8)}, then delete "${name}".`,
+    });
+    res.json({ state, prevHead });
+  })
+);
+
+// GET /api/local/actions  -> what Git Helper has done in this repo, with undo notes
+router.get(
+  "/actions",
+  asyncRoute(async (_req, res) => {
+    res.json(await listActions(res.locals.repoRoot as string));
   })
 );
 
@@ -565,7 +704,17 @@ router.post(
   asyncRoute(async (req, res) => {
     const auth = await authFor(req, res);
     if (auth === null) return;
-    res.json(await pull(res.locals.repoRoot as string, auth));
+    const root = res.locals.repoRoot as string;
+    const result = await pull(root, auth);
+    if (result.ok) {
+      await logAction({
+        root,
+        action: "Pull",
+        detail: `Merged the latest ${result.state.upstream ?? "upstream"} commits into ${result.state.branch ?? "the branch"}.`,
+        undo: "If the pull was a mistake: Recovery → \"Reset to remote\" won't help here; use Undo & restore → Rescue and jump to the position just before the pull.",
+      });
+    }
+    res.json(result);
   })
 );
 
@@ -575,7 +724,15 @@ router.post(
   asyncRoute(async (req, res) => {
     const auth = await authFor(req, res);
     if (auth === null) return;
-    res.json(await push(res.locals.repoRoot as string, auth));
+    const root = res.locals.repoRoot as string;
+    const state = await push(root, auth);
+    await logAction({
+      root,
+      action: "Push",
+      detail: `Uploaded local commits of ${state.branch ?? "the branch"} to ${state.upstream ?? "the remote"}.`,
+      undo: "Pushed commits are shared — undo with a revert (Undo & restore → Revert a commit), then push the revert.",
+    });
+    res.json(state);
   })
 );
 

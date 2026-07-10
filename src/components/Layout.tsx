@@ -49,6 +49,9 @@ export function Layout({ children }: { children: ReactNode }) {
   const st = stateQuery.data;
   const dirtyCount = st ? st.unstaged.length + st.untracked.length + st.staged.length : 0;
   const hasConflicts = !!st && st.conflicted.length > 0;
+  // Cheap situational awareness for the Recovery badge (the full scan with
+  // fetch happens on the page itself).
+  const recoveryHints = st ? (st.detached ? 1 : 0) + (st.stashCount > 0 ? 1 : 0) + (st.behind >= 10 ? 1 : 0) : 0;
 
   // Local nav, grouped the way you actually work.
   const workspaceNav: NavItem[] = [
@@ -56,6 +59,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { to: "/local/changes", label: "Changes", icon: "changes", end: false, badge: dirtyCount },
     { to: "/local/commit", label: "Commit", icon: "commit", end: false, badge: st?.staged.length || 0 },
     { to: "/local/undo", label: "Undo & restore", icon: "undo", end: false },
+    { to: "/local/recovery", label: "Recovery & sync", icon: "rescue", end: false, badge: recoveryHints, danger: !!st?.detached },
     ...(hasConflicts
       ? [{ to: "/local/conflicts", label: "Resolve conflicts", icon: "conflicts" as IconName, end: false, badge: st!.conflicted.length, danger: true }]
       : []),
