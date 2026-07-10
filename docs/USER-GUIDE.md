@@ -285,6 +285,14 @@ The toolbar on [Status](#4-status--your-home-screen):
 
 Amber "behind" states are safe — pull first, then push.
 
+**Nothing runs by surprise.** Each button first shows an *"Are you sure?"*
+dialog that spells out, for your exact situation, **what will happen** (e.g.
+*"Your 2 local commits will be uploaded to origin/main"*) and **what it
+affects** (your files? your branch? the branch on Azure that teammates see?).
+The action only runs when you click **Yes** — Cancel or `Esc` changes
+nothing. If you try to push while you're also behind, the dialog warns you
+that Azure may reject it until you pull first.
+
 ---
 
 ## 13. Azure DevOps cloud features
