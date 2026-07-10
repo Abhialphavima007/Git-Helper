@@ -217,10 +217,29 @@ export interface LocalRepoState {
   name: string | null;
 }
 
+export interface AutoCommitConfig {
+  enabled: boolean;
+  mode: "interval" | "onChange";
+  everyHours: number;
+  lastRun?: string;
+  lastResult?: string;
+}
+
 export interface StoredRepo {
   root: string;
   name: string;
   addedAt: string;
+  autoCommit?: AutoCommitConfig;
+}
+
+export interface AssistantStatus {
+  configured: boolean;
+  canConfigure: boolean;
+}
+
+export interface AssistantChatResult {
+  reply: string;
+  actions: string[];
 }
 
 export interface ReposList {
@@ -483,6 +502,12 @@ export const api = {
         body: JSON.stringify(root ? { root } : {}),
       }),
 
+    setAutoCommit: (root: string, config: Pick<AutoCommitConfig, "enabled" | "mode" | "everyHours"> | null) =>
+      http<StoredRepo>("/api/local/autocommit", {
+        method: "POST",
+        body: JSON.stringify({ root, config }),
+      }),
+
     // ---- Advanced: stash / discard / undo / amend ----
     stashList: () => http<StashEntry[]>("/api/local/stash"),
 
@@ -504,6 +529,20 @@ export const api = {
       http<{ committed: { id: string; subject: string }; state: RepoState }>("/api/local/amend", {
         method: "POST",
         body: JSON.stringify({ message }),
+      }),
+  },
+
+  // ---- AI assistant ----
+  assistant: {
+    status: () => http<AssistantStatus>("/api/assistant/status"),
+
+    setKey: (key: string) =>
+      http<{ configured: boolean }>("/api/assistant/key", { method: "POST", body: JSON.stringify({ key }) }),
+
+    chat: (messages: Array<{ role: "user" | "assistant"; content: string }>, azureRepoId?: string | null) =>
+      http<AssistantChatResult>("/api/assistant/chat", {
+        method: "POST",
+        body: JSON.stringify({ messages, azureRepoId: azureRepoId ?? undefined }),
       }),
   },
 };

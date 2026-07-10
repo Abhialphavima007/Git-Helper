@@ -7,6 +7,7 @@ import { useLocalRepo } from "../context/LocalRepoContext";
 import { TopProgressBar } from "./TopProgressBar";
 import { RepoSwitcher } from "./RepoSwitcher";
 import { ThemePicker, useThemeInit } from "./ThemePicker";
+import { AssistantPanel } from "./AssistantPanel";
 import { Icons, type IconName } from "./NavIcons";
 
 const SIDEBAR_KEY = "githelper.sidebar";
@@ -309,6 +310,9 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="mx-auto max-w-4xl">{children}</div>
         </main>
       </div>
+
+      {/* AI assistant — floating, available on every page */}
+      <AssistantPanel />
     </div>
   );
 }

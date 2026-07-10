@@ -6,14 +6,13 @@ import pullRequestRoutes from "./routes/pullRequests";
 import localRoutes from "./routes/local";
 import cloneRoutes from "./routes/clone";
 import fsRoutes from "./routes/fs";
+import assistantRoutes from "./routes/assistant";
 import { errorHandler } from "./session";
 import { cookieSession } from "./cookieSession";
+import { IS_HOSTED } from "./env";
+import { startAutoCommitScheduler } from "./autoCommit";
 
-// True when running on a shared/cloud host (Vercel sets VERCEL=1). Local-git
-// mode (clone/filesystem/git CLI) is a desktop-only feature and is disabled
-// here — on a server it would operate on the server's disk, which is wrong and
-// a security risk.
-export const IS_HOSTED = process.env.VERCEL === "1" || process.env.HOSTED === "1";
+export { IS_HOSTED };
 
 // Builds the Azure DevOps proxy as a single Express app.
 // Used three ways:
@@ -82,7 +81,11 @@ export function createApiApp() {
     app.use("/api/local", localRoutes); // status, changes, commit, branches, compare, conflicts
     app.use("/api", cloneRoutes); // clone an Azure repo to this machine
     app.use("/api/fs", fsRoutes); // folder picker
+    startAutoCommitScheduler(); // per-repo scheduled/dynamic auto-commits
   }
+
+  // AI assistant (works hosted with Azure tools; local adds git tools).
+  app.use("/api/assistant", assistantRoutes);
 
   // Any unmatched /api request → structured JSON 404 (never an opaque HTML 404),
   // which also makes routing problems obvious.

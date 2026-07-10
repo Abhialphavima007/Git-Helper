@@ -9,10 +9,21 @@ import path from "node:path";
 const DIR = path.join(os.homedir(), ".azdo-git-helper");
 const FILE = path.join(DIR, "repos.json");
 
+export interface AutoCommitConfig {
+  enabled: boolean;
+  // "interval": commit on a fixed cadence when there are changes.
+  // "onChange" (dynamic): commit shortly after changes appear (checked ~5 min).
+  mode: "interval" | "onChange";
+  everyHours: number; // interval mode: 24 = daily, 48 = alternate days
+  lastRun?: string; // ISO timestamp of the last successful auto-commit
+  lastResult?: string; // human-readable outcome of the last attempt
+}
+
 export interface StoredRepo {
   root: string;
   name: string;
   addedAt: string;
+  autoCommit?: AutoCommitConfig;
 }
 
 export interface StoreData {
@@ -78,6 +89,29 @@ export async function setLastOpened(root: string): Promise<StoredRepo | null> {
     await write(d);
   }
   return hit ?? null;
+}
+
+// Update a repo's auto-commit settings (or record a run result).
+export async function updateAutoCommit(
+  root: string,
+  patch: Partial<AutoCommitConfig> | null
+): Promise<StoredRepo | null> {
+  const d = await read();
+  const repo = d.repos.find((r) => r.root === root);
+  if (!repo) return null;
+  if (patch === null) {
+    delete repo.autoCommit;
+  } else {
+    repo.autoCommit = {
+      enabled: false,
+      mode: "interval",
+      everyHours: 24,
+      ...repo.autoCommit,
+      ...patch,
+    };
+  }
+  await write(d);
+  return repo;
 }
 
 export async function removeRepo(root: string): Promise<StoreData> {

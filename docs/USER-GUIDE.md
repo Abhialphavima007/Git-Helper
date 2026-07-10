@@ -27,7 +27,9 @@ state in plain language, shows the next safe step, and covers the whole loop:
 12. [Push, Pull, Fetch](#12-push-pull-fetch)
 13. [Azure DevOps cloud features](#13-azure-devops-cloud-features)
 14. [Appearance: dark mode & colors](#14-appearance-dark-mode--colors)
-15. [Troubleshooting](#15-troubleshooting)
+15. [AI assistant](#15-ai-assistant)
+16. [Auto-commit](#16-auto-commit)
+17. [Troubleshooting](#17-troubleshooting)
 
 ---
 
@@ -340,7 +342,48 @@ icon rail — hover an icon for its name; click ▢ again to expand.
 
 ---
 
-## 15. Troubleshooting
+## 15. AI assistant
+
+The **chat bubble in the bottom-right corner** opens the AI assistant — it can
+*do* things, not just answer. It works through the same safe operations as the
+UI: check status, list/create/switch branches, stage and commit with a good
+message, compare branches, stash, fetch/pull/push, and on the Azure side list
+branches and PRs and **open a pull request**.
+
+Try: *"What's the state of my repo?"* · *"Create a branch fix/tax and switch
+to it"* · *"Stage everything and commit with a sensible message"* · *"Compare
+my branch with master and tell me if it's safe to merge"* · *"Open a PR from
+my branch into main"*.
+
+**Safety:** the assistant never discards changes, deletes branches, rewrites
+pushed history, or completes merges/PRs — those stay manual. If it hits a
+conflict it stops and sends you to the resolver.
+
+**One-time setup:** the assistant runs on Claude, so it needs an Anthropic API
+key (create one at `console.anthropic.com`). On the desktop/local app, paste it
+into the panel — it's stored only on your machine and used server-side. On the
+hosted web app, the site owner sets the `ANTHROPIC_API_KEY` environment
+variable instead.
+
+## 16. Auto-commit
+
+On the [Status page](#4-status--your-home-screen), the **Auto-commit** card
+lets each repository commit its outstanding changes automatically — off by
+default, enable it per repo with the toggle. Three schedules:
+
+| Schedule | Behavior |
+|---|---|
+| **Daily** | Once a day, commits whatever changed (skips if nothing changed) |
+| **Every 2 days** | Same, on alternate days |
+| **When changes appear (dynamic)** | Commits shortly after changes show up (at most every 5 minutes) |
+
+Auto-commits are clearly labelled (*"Auto-commit (Git Helper): 3 files —
+2026-07-10 14:00"*), and the card shows the last run's result. Safety rules:
+it **never pushes** (sharing stays your call), and it never touches a repo
+that is mid-merge, conflicted, or in detached HEAD. Runs while the app (web
+dev server or desktop app) is open.
+
+## 17. Troubleshooting
 
 | Problem | Fix |
 |---|---|

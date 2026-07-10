@@ -7,6 +7,7 @@ import { changeLabel, localStateVerdict } from "../lib/git";
 import { Card, ChangePill, DiffStat, ErrorNote, GuidanceBanner, Mono, Spinner, StatusPill } from "../components/ui";
 import { NetworkToolbar } from "../components/NetworkToolbar";
 import { WorkflowStrip } from "../components/WorkflowStrip";
+import { AutoCommitCard } from "../components/AutoCommitCard";
 import type { Light } from "../lib/git";
 
 function errText(err: unknown): string {
@@ -125,6 +126,8 @@ export function LocalStatusPage() {
           </Card>
 
           <StashSection state={s} onChanged={refreshAll} onNote={setNote} />
+
+          <AutoCommitCard />
 
           <section>
             <h2 className="mb-2 font-display text-sm font-semibold text-ink">Where's the issue?</h2>

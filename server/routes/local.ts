@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request } from "express";
 import { resolveRepo, azureAuthArgs, openInEditor } from "../git";
-import { listRepos, addRepo, setLastOpened, removeRepo } from "../repoStore";
+import { listRepos, addRepo, setLastOpened, removeRepo, updateAutoCommit } from "../repoStore";
 import {
   getState,
   getBranches,
@@ -99,6 +99,32 @@ router.post(
     const { repos, lastOpened } = await removeRepo(root);
     if (req.session.localRepo?.root === root) req.session.localRepo = undefined;
     res.json({ repos, lastOpened, current: req.session.localRepo?.root ?? null });
+  })
+);
+
+// POST /api/local/autocommit  { root, config: {enabled, mode, everyHours} | null }
+// Configure per-repo automatic commits (interval or on-change).
+router.post(
+  "/autocommit",
+  asyncRoute(async (req, res) => {
+    const root = typeof req.body?.root === "string" ? req.body.root : "";
+    if (!root) {
+      res.status(400).json({ error: "missing_root", message: "A repository is required." });
+      return;
+    }
+    const cfg = req.body?.config;
+    let patch: { enabled: boolean; mode: "interval" | "onChange"; everyHours: number } | null = null;
+    if (cfg && typeof cfg === "object") {
+      const mode = cfg.mode === "onChange" ? "onChange" : "interval";
+      const everyHours = Math.min(Math.max(Number(cfg.everyHours) || 24, 1), 24 * 14);
+      patch = { enabled: !!cfg.enabled, mode, everyHours };
+    }
+    const repo = await updateAutoCommit(root, patch);
+    if (!repo) {
+      res.status(404).json({ error: "unknown_repo", message: "That repository isn't in the list." });
+      return;
+    }
+    res.json(repo);
   })
 );
 
