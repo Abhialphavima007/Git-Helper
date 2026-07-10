@@ -12,6 +12,9 @@ export interface AppSession {
   connection?: Connection;
   me?: IdentityRef;
   localRepo?: { root: string; name: string };
+  // Hosted deployments: each visitor's own assistant key, private to their
+  // encrypted session cookie (same mechanism as the PAT).
+  assistantKey?: { provider: "anthropic" | "gemini"; key: string };
   destroy: (cb?: () => void) => void;
 }
 

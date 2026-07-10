@@ -236,6 +236,7 @@ export interface AssistantStatus {
   configured: boolean;
   provider: "anthropic" | "gemini" | null;
   canConfigure: boolean;
+  hosted: boolean;
 }
 
 export interface AssistantChatResult {

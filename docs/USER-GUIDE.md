@@ -366,10 +366,12 @@ on your machine and used server-side.
 | Provider | Where to get a key | Notes |
 |---|---|---|
 | **Claude** (Anthropic) | `console.anthropic.com` → API keys | strongest at multi-step git work |
-| **Gemini** (Google) | `aistudio.google.com` → Get API key | has a **free tier** — good starting point |
+| **Gemini** (Google) | `aistudio.google.com` → Get API key | has a **free tier**; both key formats work (`AIza…` and `AQ.…`) |
 
-On the hosted web app, the site owner sets the `ANTHROPIC_API_KEY` or
-`GEMINI_API_KEY` environment variable instead.
+This works the same on the **hosted web app** — everyone brings their own key,
+kept in their own encrypted session (private per user, like the Azure token).
+A site owner can optionally set `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`
+environment variables to provide a shared key for all visitors instead.
 
 ### No API key? Connect Claude Desktop (MCP)
 

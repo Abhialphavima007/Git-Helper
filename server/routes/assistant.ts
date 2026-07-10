@@ -1,40 +1,49 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { asyncRoute } from "../session";
 import { getAssistantCredentials, setAssistantKey, clearAssistantKeys, type AssistantProvider } from "../settings";
+import type { AssistantCredentials } from "../settings";
 import { runAssistant, type AssistantContext, type ChatTurn } from "../assistant";
 import { IS_HOSTED } from "../env";
 
 const router = Router();
 
+// Where a key can come from, in order: env vars (site-wide), the visitor's
+// encrypted session cookie (hosted per-user keys), the machine settings file
+// (desktop/local).
+async function resolveCredentials(req: Request): Promise<AssistantCredentials | null> {
+  if (process.env.ANTHROPIC_API_KEY) return { provider: "anthropic", key: process.env.ANTHROPIC_API_KEY };
+  if (process.env.GEMINI_API_KEY) return { provider: "gemini", key: process.env.GEMINI_API_KEY };
+  if (req.session.assistantKey?.key) return req.session.assistantKey;
+  if (!IS_HOSTED) return getAssistantCredentials();
+  return null;
+}
+
 // GET /api/assistant/status -> is the assistant ready, and on which provider?
 router.get(
   "/status",
-  asyncRoute(async (_req, res) => {
-    const creds = await getAssistantCredentials();
+  asyncRoute(async (req, res) => {
+    const creds = await resolveCredentials(req);
     res.json({
       configured: !!creds,
       provider: creds?.provider ?? null,
-      // On hosted deployments keys come from env vars; no key-entry UI there.
-      canConfigure: !IS_HOSTED,
+      canConfigure: true, // everyone can bring their own key now
+      hosted: IS_HOSTED, // hosted keys live in the visitor's session cookie
     });
   })
 );
 
-// POST /api/assistant/key { provider: "anthropic"|"gemini", key }  (local only)
+// POST /api/assistant/key { provider: "anthropic"|"gemini", key }
+// Hosted: stored in the visitor's encrypted session cookie (private per user).
+// Local/desktop: stored on this machine so it survives restarts.
 router.post(
   "/key",
   asyncRoute(async (req, res) => {
-    if (IS_HOSTED) {
-      res.status(403).json({
-        error: "hosted",
-        message: "On the hosted app, keys are set via the ANTHROPIC_API_KEY or GEMINI_API_KEY environment variables.",
-      });
-      return;
-    }
     const provider: AssistantProvider = req.body?.provider === "gemini" ? "gemini" : "anthropic";
     const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
     if (!key) {
-      await clearAssistantKeys();
+      req.session.assistantKey = undefined;
+      if (!IS_HOSTED) await clearAssistantKeys();
       res.json({ configured: false });
       return;
     }
@@ -42,11 +51,17 @@ router.post(
       res.status(400).json({ error: "bad_key", message: "That doesn't look like an Anthropic API key (they start with sk-ant-)." });
       return;
     }
-    if (provider === "gemini" && !key.startsWith("AIza")) {
-      res.status(400).json({ error: "bad_key", message: "That doesn't look like a Gemini API key (they start with AIza)." });
+    // Gemini keys come in several formats (classic AIza…, newer AQ.…) — just
+    // sanity-check the shape and let Google validate for real.
+    if (provider === "gemini" && (key.length < 20 || /\s/.test(key))) {
+      res.status(400).json({ error: "bad_key", message: "That Gemini key looks incomplete — paste the whole key (no spaces)." });
       return;
     }
-    await setAssistantKey(provider, key);
+    if (IS_HOSTED) {
+      req.session.assistantKey = { provider, key };
+    } else {
+      await setAssistantKey(provider, key);
+    }
     res.json({ configured: true, provider });
   })
 );
@@ -55,7 +70,7 @@ router.post(
 router.post(
   "/chat",
   asyncRoute(async (req, res) => {
-    const creds = await getAssistantCredentials();
+    const creds = await resolveCredentials(req);
     if (!creds) {
       res.status(409).json({ error: "not_configured", message: "The assistant needs an API key first (Claude or Gemini)." });
       return;
