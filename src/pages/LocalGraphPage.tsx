@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
 import { api, type GraphCommit } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { timeAgo } from "../lib/git";
@@ -333,15 +333,40 @@ export function LocalGraphPage() {
 // while you click other commits, and closes with Esc or the × button.
 function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { root } = useLocalRepo();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const [openFile, setOpenFile] = useState<string | null>(null);
+  const [revertError, setRevertError] = useState<unknown>(null);
+  const [reverted, setReverted] = useState(false);
 
   const query = useQuery({
     queryKey: ["local-commit-detail", root, id],
     queryFn: () => api.local.getCommitDetail(id),
   });
 
+  // "Undo this commit" straight from history — revert is the safe, always-
+  // available option (it adds a new commit; nothing is rewritten).
+  const revertM = useMutation({
+    mutationFn: (hash: string) => api.local.revertCommit(hash),
+    onSuccess: (res) => {
+      qc.setQueryData(["local-state", root], res.state);
+      qc.invalidateQueries({ queryKey: ["local-graph"] });
+      setRevertError(null);
+      if (res.conflicts) {
+        navigate("/local/conflicts");
+        return;
+      }
+      setReverted(true);
+    },
+    onError: (e) => setRevertError(e),
+  });
+
   // Fresh commit → start with files collapsed again.
-  useEffect(() => setOpenFile(null), [id]);
+  useEffect(() => {
+    setOpenFile(null);
+    setReverted(false);
+    setRevertError(null);
+  }, [id]);
 
   // Esc closes the panel.
   useEffect(() => {
@@ -378,6 +403,39 @@ function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   {d.refs.map((ref) => (
                     <RefChip key={ref} label={ref} />
                   ))}
+                </p>
+              )}
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <button
+                  disabled={revertM.isPending || reverted}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Undo "${d.subject}"?\n\nA new commit will be created that cancels it — history is not rewritten, so this is safe even if it's pushed.`
+                      )
+                    )
+                      revertM.mutate(d.full);
+                  }}
+                  className="rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink hover:bg-paper disabled:opacity-50"
+                  title="Create a new commit that cancels this one (safe, works for pushed commits)"
+                >
+                  {revertM.isPending ? "Undoing…" : reverted ? "✓ Undone" : "↩ Undo this commit"}
+                </button>
+                <Link
+                  to={`/local/undo?commit=${d.full}`}
+                  onClick={onClose}
+                  className="text-xs font-medium text-accent hover:underline"
+                  title="Rewind the branch here, and other options"
+                >
+                  More undo options →
+                </Link>
+              </div>
+              {reverted && (
+                <p className="mt-1.5 text-xs text-ok">A cancelling commit was created — push when ready.</p>
+              )}
+              {revertError != null && (
+                <p className="mt-1.5 text-xs text-danger">
+                  {revertError instanceof Error ? revertError.message : "The undo failed."}
                 </p>
               )}
             </>

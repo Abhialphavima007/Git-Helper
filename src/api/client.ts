@@ -54,6 +54,7 @@ export interface ConnectResult extends ConnectionState {
 
 export interface CommitInfo {
   id: string;
+  fullId: string;
   message: string;
   author: string;
   date: string | null;
@@ -144,6 +145,15 @@ export interface RepoState {
 export interface StashEntry {
   ref: string;
   message: string;
+}
+
+export interface ReflogEntry {
+  hash: string;
+  short: string;
+  selector: string;
+  action: string;
+  subject: string;
+  date: string;
 }
 
 export interface LocalBranch {
@@ -360,6 +370,13 @@ export const api = {
       `/api/repos/${encodeURIComponent(repoId)}/compare?base=${encodeURIComponent(base)}&target=${encodeURIComponent(target)}`
     ),
 
+  // Undo a commit on Azure: server creates a revert branch + a PR into `branch`.
+  revertAzureCommit: (repoId: string, body: { commitId: string; branch: string; message?: string }) =>
+    http<{ prId: number; title: string; revertBranch: string }>(
+      `/api/repos/${encodeURIComponent(repoId)}/revert`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+
   createPullRequest: (
     repoId: string,
     body: { source: string; target: string; title: string; description?: string }
@@ -541,6 +558,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ message }),
       }),
+
+    // ---- Undo & restore ----
+    revertCommit: (id: string) =>
+      http<BranchActionResult>("/api/local/revert-commit", { method: "POST", body: JSON.stringify({ id }) }),
+
+    reset: (id: string, mode: "soft" | "mixed" | "hard", force = false) =>
+      http<RepoState>("/api/local/reset", { method: "POST", body: JSON.stringify({ id, mode, force }) }),
+
+    reflog: (limit = 30) => http<ReflogEntry[]>(`/api/local/reflog?limit=${limit}`),
   },
 
   // ---- AI assistant ----

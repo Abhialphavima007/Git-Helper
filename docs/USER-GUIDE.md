@@ -29,7 +29,8 @@ state in plain language, shows the next safe step, and covers the whole loop:
 14. [Appearance: dark mode & colors](#14-appearance-dark-mode--colors)
 15. [AI assistant](#15-ai-assistant)
 16. [Auto-commit](#16-auto-commit)
-17. [Troubleshooting](#17-troubleshooting)
+17. [Undo & restore — take something back](#17-undo--restore--take-something-back)
+18. [Troubleshooting](#18-troubleshooting)
 
 ---
 
@@ -434,7 +435,35 @@ it **never pushes** (sharing stays your call), and it never touches a repo
 that is mid-merge, conflicted, or in detached HEAD. Runs while the app (web
 dev server or desktop app) is open.
 
-## 17. Troubleshooting
+## 17. Undo & restore — take something back
+
+Sidebar → **Undo & restore** (in the WORKSPACE section). One page with every
+way to take something back, ordered from mild to drastic, each with a plain
+"When / What it does" description — you never need to know the git command
+behind it.
+
+| # | Undo | When to use it |
+|---|---|---|
+| 1 | **Unstage files** | You staged files for the next commit but changed your mind. Edits stay. |
+| 2 | **Stash** | Edits aren't ready but you need a clean repo. Nothing is lost. |
+| 3 | **Discard changes** | Wrong edits — put files back the way the last commit had them. *Permanent.* |
+| 4 | **Undo the last commit** | You just committed and spotted a problem. The work comes back staged. Only for unpushed commits. |
+| 5 | **Revert a commit** | Any commit — even old, even already pushed — was a mistake. Creates a *new* commit that cancels it, so history is never rewritten. The safe default. |
+| 6 | **Rewind the branch (reset)** | The last few *unpushed* commits shouldn't have happened. Choose whether the undone work stays staged, comes back as edits, or is discarded. Automatically refused if it would rewind pushed commits. |
+| 7 | **Rescue (recent positions)** | Something went really wrong. Git keeps every place your branch has been for ~90 days — jump back to any of them, even after a bad rewind. |
+
+Shortcuts: in **History**, click any commit and use **↩ Undo this commit**
+right in the detail panel (or *More undo options* to jump to this page with
+that commit preselected). If an undo clashes with newer changes, you're taken
+to the conflict resolver, same as a merge.
+
+**On the cloud (Azure DevOps):** the Dashboard's *Recent commits* list has an
+**↩ Undo** button per commit. Azure prepares the opposite change on a new
+`revert/…` branch and Git Helper opens a pull request with it — nothing on
+the branch changes until you complete that PR, so an undo is always reviewed
+and never rewrites shared history.
+
+## 18. Troubleshooting
 
 | Problem | Fix |
 |---|---|

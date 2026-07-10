@@ -55,6 +55,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { to: "/local", label: "Status", icon: "status", end: true },
     { to: "/local/changes", label: "Changes", icon: "changes", end: false, badge: dirtyCount },
     { to: "/local/commit", label: "Commit", icon: "commit", end: false, badge: st?.staged.length || 0 },
+    { to: "/local/undo", label: "Undo & restore", icon: "undo", end: false },
     ...(hasConflicts
       ? [{ to: "/local/conflicts", label: "Resolve conflicts", icon: "conflicts" as IconName, end: false, badge: st!.conflicted.length, danger: true }]
       : []),

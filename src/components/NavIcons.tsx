@@ -62,6 +62,12 @@ export const Icons = {
       <path d="M12 9v4M12 17h.01" />
     </Base>
   ),
+  undo: (
+    <Base>
+      <path d="M3 7v6h6" />
+      <path d="M3 13a9 9 0 1 0 3-7.7L3 7" />
+    </Base>
+  ),
   dashboard: (
     <Base>
       <rect x="3" y="3" width="7" height="9" rx="1.5" />

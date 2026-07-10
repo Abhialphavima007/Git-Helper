@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
+import { api, type CommitInfo } from "../api/client";
 import { useConnection } from "../context/ConnectionContext";
 import { branchVerdict, timeAgo } from "../lib/git";
 import { Card, ErrorNote, GuidanceBanner, Mono, Spinner } from "../components/ui";
@@ -115,19 +115,17 @@ export function DashboardPage() {
                 <p className="mt-3 text-sm text-muted">No commits found on this branch.</p>
               )}
               {commitsQuery.data && commitsQuery.data.length > 0 && (
-                <ul className="mt-3 space-y-3">
-                  {commitsQuery.data.slice(0, 8).map((c) => (
-                    <li key={c.id} className="flex gap-3">
-                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-line" aria-hidden />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-ink">{c.message || "(no message)"}</p>
-                        <p className="text-xs text-muted">
-                          <Mono>{c.id}</Mono> · {c.author} · {timeAgo(c.date)}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="mt-3 space-y-3">
+                    {commitsQuery.data.slice(0, 8).map((c) => (
+                      <CommitRow key={c.id} commit={c} repoId={selectedRepoId!} branch={branch.name} />
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-xs text-muted">
+                    Made a mistake? <b>Undo</b> asks Azure to prepare the opposite change and opens a pull request
+                    with it — nothing on the branch changes until that PR is completed.
+                  </p>
+                </>
               )}
             </Card>
           </div>
@@ -154,6 +152,58 @@ export function DashboardPage() {
         </>
       )}
     </div>
+  );
+}
+
+// One commit in the "Recent commits" card, with a cloud Undo: Azure prepares
+// a revert branch and we open a PR from it — the safe, reviewable undo.
+function CommitRow({ commit, repoId, branch }: { commit: CommitInfo; repoId: string; branch: string }) {
+  const [error, setError] = useState<string | null>(null);
+
+  const revertM = useMutation({
+    mutationFn: () =>
+      api.revertAzureCommit(repoId, { commitId: commit.fullId, branch, message: commit.message }),
+    onSuccess: () => setError(null),
+    onError: (e) => setError(e instanceof Error ? e.message : "The undo failed."),
+  });
+
+  return (
+    <li className="flex gap-3">
+      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-line" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-ink">{commit.message || "(no message)"}</p>
+        <p className="text-xs text-muted">
+          <Mono>{commit.id}</Mono> · {commit.author} · {timeAgo(commit.date)}
+        </p>
+        {revertM.data && (
+          <p className="mt-1 text-xs text-ok">
+            Revert ready —{" "}
+            <Link to={`/pulls/${revertM.data.prId}`} className="font-medium text-accent hover:underline">
+              complete PR #{revertM.data.prId}
+            </Link>{" "}
+            to apply the undo.
+          </p>
+        )}
+        {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+      </div>
+      {!revertM.data && (
+        <button
+          disabled={revertM.isPending}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Undo "${commit.message}" on ${branch}?\n\nAzure will prepare the opposite change on a new branch and a pull request will be opened — the branch itself only changes when that PR is completed.`
+              )
+            )
+              revertM.mutate();
+          }}
+          className="h-fit shrink-0 rounded-md border border-line px-2 py-1 text-xs font-medium text-muted hover:bg-paper hover:text-ink disabled:opacity-50"
+          title="Create a revert PR that cancels this commit"
+        >
+          {revertM.isPending ? "Undoing…" : "↩ Undo"}
+        </button>
+      )}
+    </li>
   );
 }
 

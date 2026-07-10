@@ -32,8 +32,12 @@ import {
   discardFiles,
   undoLastCommit,
   amendCommit,
+  revertCommit,
+  resetToCommit,
+  getReflog,
   getCommitDetail,
   commitFileDiff,
+  type ResetMode,
 } from "../localGit";
 import { asyncRoute, requireLocalRepo } from "../session";
 
@@ -403,6 +407,49 @@ router.post(
     const root = res.locals.repoRoot as string;
     const result = await amendCommit(root, message);
     res.json({ committed: result, state: await getState(root) });
+  })
+);
+
+// POST /api/local/revert-commit  { id }  -> new commit that undoes commit `id`
+// (safe for pushed commits; conflicts are reported for the resolver)
+router.post(
+  "/revert-commit",
+  asyncRoute(async (req, res) => {
+    const id = typeof req.body?.id === "string" ? req.body.id.trim() : "";
+    if (!id) {
+      res.status(400).json({ error: "missing_id", message: "A commit id is required." });
+      return;
+    }
+    res.json(await revertCommit(res.locals.repoRoot as string, id));
+  })
+);
+
+// POST /api/local/reset  { id, mode, force? }  -> move the branch back to `id`.
+// mode: soft (keep staged) | mixed (keep as edits) | hard (discard). Refused
+// when it would rewind pushed commits, unless force (the reflog rescue path).
+router.post(
+  "/reset",
+  asyncRoute(async (req, res) => {
+    const id = typeof req.body?.id === "string" ? req.body.id.trim() : "";
+    const mode = req.body?.mode as ResetMode;
+    if (!id) {
+      res.status(400).json({ error: "missing_id", message: "A commit id is required." });
+      return;
+    }
+    if (mode !== "soft" && mode !== "mixed" && mode !== "hard") {
+      res.status(400).json({ error: "bad_mode", message: "mode must be soft, mixed or hard." });
+      return;
+    }
+    res.json(await resetToCommit(res.locals.repoRoot as string, id, mode, !!req.body?.force));
+  })
+);
+
+// GET /api/local/reflog?limit=30  -> recent HEAD positions (the safety net)
+router.get(
+  "/reflog",
+  asyncRoute(async (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 30, 100);
+    res.json(await getReflog(res.locals.repoRoot as string, limit));
   })
 );
 

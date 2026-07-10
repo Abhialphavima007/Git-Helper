@@ -18,6 +18,7 @@ import { LocalBranchesPage } from "./pages/LocalBranchesPage";
 import { LocalComparePage } from "./pages/LocalComparePage";
 import { LocalGraphPage } from "./pages/LocalGraphPage";
 import { LocalConflictsPage } from "./pages/LocalConflictsPage";
+import { LocalUndoPage } from "./pages/LocalUndoPage";
 import { Spinner } from "./components/ui";
 
 // Gate the Azure DevOps screens: needs an active connection.
@@ -99,6 +100,7 @@ export default function App() {
       <Route path="/local/compare" element={<RequireLocal><LocalComparePage /></RequireLocal>} />
       <Route path="/local/graph" element={<RequireLocal><LocalGraphPage /></RequireLocal>} />
       <Route path="/local/conflicts" element={<RequireLocal><LocalConflictsPage /></RequireLocal>} />
+      <Route path="/local/undo" element={<RequireLocal><LocalUndoPage /></RequireLocal>} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

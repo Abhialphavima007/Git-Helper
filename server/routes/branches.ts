@@ -1,6 +1,6 @@
 import { Router } from "express";
-import type { Connection, GitBranchStat, GitCommitRef, GitRepository, ListResponse } from "../azdo";
-import { gitGet, AzdoError } from "../azdo";
+import type { Connection, GitBranchStat, GitCommitRef, GitRepository, ListResponse, PullRequest } from "../azdo";
+import { gitGet, gitPost, AzdoError } from "../azdo";
 import { asyncRoute, requireConnection } from "../session";
 import { mapBranch, shortRef } from "../util";
 
@@ -121,11 +121,80 @@ router.get(
     res.json(
       commits.value.map((commit) => ({
         id: commit.commitId.slice(0, 8),
+        fullId: commit.commitId,
         message: (commit.comment || "").split("\n")[0],
         author: commit.author?.name || commit.committer?.name || "Unknown",
         date: commit.author?.date || commit.committer?.date || null,
       }))
     );
+  })
+);
+
+// POST /api/repos/:repoId/revert  { commitId, branch, message? }
+// Undo a commit on Azure the safe way: Azure computes the opposite change on
+// a new revert branch, then we open a PR from it into the branch. Nothing on
+// the branch itself changes until someone completes that PR.
+interface AzdoRevert {
+  revertId: number;
+  status: string; // queued | inProgress | completed | failed | ...
+  detailedStatus?: { failureMessage?: string };
+}
+
+router.post(
+  "/revert",
+  asyncRoute(async (req, res) => {
+    const c = res.locals.connection as Connection;
+    const { repoId } = req.params;
+    const commitId = typeof req.body?.commitId === "string" ? req.body.commitId.trim() : "";
+    const branch = typeof req.body?.branch === "string" ? req.body.branch.trim() : "";
+    const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    if (!commitId || !branch) {
+      res.status(400).json({ error: "missing_fields", message: "A commit id and a branch are required." });
+      return;
+    }
+
+    const repo = await gitGet<GitRepository>(c, `/repositories/${encodeURIComponent(repoId)}`);
+    const suffix = Math.random().toString(36).slice(2, 7);
+    const generatedRefName = `refs/heads/revert/${commitId.slice(0, 8)}-${suffix}`;
+
+    const revert = await gitPost<AzdoRevert>(c, `/repositories/${repo.id}/reverts`, {
+      generatedRefName,
+      ontoRefName: `refs/heads/${branch}`,
+      repository: { id: repo.id, name: repo.name },
+      source: { commitList: [{ commitId }] },
+    });
+
+    // Azure computes the revert asynchronously — poll briefly until it lands.
+    let status = revert.status;
+    let failure: string | undefined;
+    for (let i = 0; i < 20 && (status === "queued" || status === "inProgress"); i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const cur = await gitGet<AzdoRevert>(c, `/repositories/${repo.id}/reverts/${revert.revertId}`);
+      status = cur.status;
+      failure = cur.detailedStatus?.failureMessage;
+    }
+    if (status !== "completed") {
+      res.status(409).json({
+        error: "revert_failed",
+        message:
+          failure ||
+          `Azure couldn't create the revert (status: ${status}). This usually means the commit conflicts with newer changes on ${branch} — revert it locally instead and resolve the conflicts there.`,
+      });
+      return;
+    }
+
+    const pr = await gitPost<PullRequest>(c, `/repositories/${repo.id}/pullrequests`, {
+      sourceRefName: generatedRefName,
+      targetRefName: `refs/heads/${branch}`,
+      title: `Revert: ${message || commitId.slice(0, 8)}`,
+      description: `Undoes commit ${commitId} on \`${branch}\`.\n\nCreated with Git Helper — complete this PR to apply the undo.`,
+    });
+
+    res.json({
+      prId: pr.pullRequestId,
+      title: pr.title,
+      revertBranch: generatedRefName.replace("refs/heads/", ""),
+    });
   })
 );
 

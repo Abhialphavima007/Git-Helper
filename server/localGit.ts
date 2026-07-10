@@ -630,6 +630,89 @@ export async function amendCommit(root: string, message: string): Promise<Commit
   return { id, subject };
 }
 
+// ---- Revert / rewind / rescue (the rest of the undo toolbox) ----
+
+// Undo one commit by creating a NEW commit with the opposite change. History
+// is added to, never rewritten, so this is the safe choice for commits that
+// are already pushed. Merge commits are reverted against their first parent.
+// Conflicts are reported, not thrown, so the UI can route to the resolver.
+export async function revertCommit(root: string, hash: string): Promise<BranchActionResult> {
+  const parents = (await runGit(root, ["rev-list", "--parents", "-n", "1", hash])).trim().split(/\s+/);
+  const args = ["revert", "--no-edit"];
+  if (parents.length > 2) args.push("-m", "1");
+  args.push(hash);
+  try {
+    await runGit(root, args);
+  } catch (e) {
+    const state = await getState(root);
+    if (state.conflicted.length > 0) return { ok: false, conflicts: true, state };
+    await runGit(root, ["revert", "--abort"]).catch(() => undefined);
+    throw e;
+  }
+  return { ok: true, conflicts: false, state: await getState(root) };
+}
+
+export type ResetMode = "soft" | "mixed" | "hard";
+
+// Move the current branch back to an older commit. soft keeps the undone work
+// staged, mixed keeps it as unstaged edits, hard throws it away. Refused
+// (unless force, the reflog-rescue path) when any commit being rewound is
+// already on the upstream — the next push would be rejected, and revert is
+// the right tool for shared history.
+export async function resetToCommit(root: string, hash: string, mode: ResetMode, force = false): Promise<RepoState> {
+  await runGit(root, ["rev-parse", "--verify", `${hash}^{commit}`]);
+  if (!force) {
+    const state = await getState(root);
+    if (state.upstream) {
+      const rewound = Number((await runGit(root, ["rev-list", "--count", `${hash}..HEAD`])).trim());
+      const unpushed = Number(
+        (await runGit(root, ["rev-list", "--count", "HEAD", `^${hash}`, `^${state.upstream}`])).trim()
+      );
+      if (rewound - unpushed > 0) {
+        throw Object.assign(
+          new Error(
+            `That would rewind commit(s) that are already pushed to ${state.upstream}. Rewriting shared history breaks everyone else's copy — use "Revert a commit" instead: it undoes the change with a new commit that is safe to push.`
+          ),
+          { name: "ResetError" }
+        );
+      }
+    }
+  }
+  await runGit(root, ["reset", `--${mode}`, hash]);
+  return getState(root);
+}
+
+export interface ReflogEntry {
+  hash: string;
+  short: string;
+  selector: string; // e.g. HEAD@{2}
+  action: string; // e.g. "commit", "pull", "reset", "checkout"
+  subject: string; // git's human-readable description of the move
+  date: string; // when HEAD moved there
+}
+
+// Git's safety net: every place HEAD has been recently (commits, merges,
+// pulls, resets, checkouts) — kept for ~90 days even after a bad reset, so
+// almost nothing is truly lost. Entries here can be rewound to with force.
+export async function getReflog(root: string, limit = 30): Promise<ReflogEntry[]> {
+  const raw = await runGit(root, [
+    "reflog",
+    "--date=iso-strict",
+    `--format=%H${UNIT}%h${UNIT}%gd${UNIT}%gs`,
+    "-n",
+    String(limit),
+  ]);
+  return raw
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [hash, short, selectorRaw, subject = ""] = line.split(UNIT);
+      const date = /HEAD@\{(.+)\}/.exec(selectorRaw ?? "")?.[1] ?? "";
+      const action = (subject.split(":")[0] || "").trim();
+      return { hash, short, selector: selectorRaw ?? "", action, subject, date };
+    });
+}
+
 // ---- Remotes ----
 
 export interface Remote {
