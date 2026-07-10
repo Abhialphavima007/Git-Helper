@@ -11,3 +11,4 @@ desktop/node_modules
 desktop/dist
 desktop/release
 desktop/package-lock.json
+mcp/git-helper-mcp.mjs

@@ -365,6 +365,31 @@ into the panel — it's stored only on your machine and used server-side. On the
 hosted web app, the site owner sets the `ANTHROPIC_API_KEY` environment
 variable instead.
 
+### No API key? Use Claude Desktop instead (MCP)
+
+If you have the **Claude Desktop app**, you can skip the API key entirely and
+chat with your repos *inside Claude Desktop* — Git Helper plugs in as an MCP
+server, and inference runs on your Claude subscription:
+
+```bash
+npm run mcp:install       # registers "git-helper" in Claude Desktop's config
+```
+
+Restart Claude Desktop, then just ask it things like *"what's the status of my
+repos?"*, *"commit my changes in payments-service"*, or *"compare my branch
+with master"*. It sees the same repository list as the app and follows the
+same safety rules (nothing destructive, conflicts are reported not "fixed").
+
+To also enable the Azure DevOps tools (list repos/branches/PRs, create a PR),
+pass your Azure details when installing:
+
+```bash
+AZDO_ORG=yourorg AZDO_PROJECT="Your Project" AZDO_PAT=xxxx npm run mcp:install
+```
+
+The in-app chat bubble and Claude Desktop work independently — use either or
+both.
+
 ## 16. Auto-commit
 
 On the [Status page](#4-status--your-home-screen), the **Auto-commit** card
