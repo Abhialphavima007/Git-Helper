@@ -1,45 +1,53 @@
 import { Router } from "express";
 import { asyncRoute } from "../session";
-import { getAssistantApiKey, setAssistantApiKey, clearAssistantApiKey } from "../settings";
+import { getAssistantCredentials, setAssistantKey, clearAssistantKeys, type AssistantProvider } from "../settings";
 import { runAssistant, type AssistantContext, type ChatTurn } from "../assistant";
 import { IS_HOSTED } from "../env";
 
 const router = Router();
 
-// GET /api/assistant/status -> is the assistant ready to use?
+// GET /api/assistant/status -> is the assistant ready, and on which provider?
 router.get(
   "/status",
   asyncRoute(async (_req, res) => {
-    const key = await getAssistantApiKey();
+    const creds = await getAssistantCredentials();
     res.json({
-      configured: !!key,
-      // On hosted deployments the key comes from the ANTHROPIC_API_KEY env var;
-      // there is no key-entry UI there.
+      configured: !!creds,
+      provider: creds?.provider ?? null,
+      // On hosted deployments keys come from env vars; no key-entry UI there.
       canConfigure: !IS_HOSTED,
     });
   })
 );
 
-// POST /api/assistant/key { key }  -> store the Anthropic API key (local only)
+// POST /api/assistant/key { provider: "anthropic"|"gemini", key }  (local only)
 router.post(
   "/key",
   asyncRoute(async (req, res) => {
     if (IS_HOSTED) {
-      res.status(403).json({ error: "hosted", message: "On the hosted app the key is set via the ANTHROPIC_API_KEY environment variable." });
+      res.status(403).json({
+        error: "hosted",
+        message: "On the hosted app, keys are set via the ANTHROPIC_API_KEY or GEMINI_API_KEY environment variables.",
+      });
       return;
     }
+    const provider: AssistantProvider = req.body?.provider === "gemini" ? "gemini" : "anthropic";
     const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
     if (!key) {
-      await clearAssistantApiKey();
+      await clearAssistantKeys();
       res.json({ configured: false });
       return;
     }
-    if (!key.startsWith("sk-ant-")) {
+    if (provider === "anthropic" && !key.startsWith("sk-ant-")) {
       res.status(400).json({ error: "bad_key", message: "That doesn't look like an Anthropic API key (they start with sk-ant-)." });
       return;
     }
-    await setAssistantApiKey(key);
-    res.json({ configured: true });
+    if (provider === "gemini" && !key.startsWith("AIza")) {
+      res.status(400).json({ error: "bad_key", message: "That doesn't look like a Gemini API key (they start with AIza)." });
+      return;
+    }
+    await setAssistantKey(provider, key);
+    res.json({ configured: true, provider });
   })
 );
 
@@ -47,9 +55,9 @@ router.post(
 router.post(
   "/chat",
   asyncRoute(async (req, res) => {
-    const key = await getAssistantApiKey();
-    if (!key) {
-      res.status(409).json({ error: "not_configured", message: "The assistant needs an Anthropic API key first." });
+    const creds = await getAssistantCredentials();
+    if (!creds) {
+      res.status(409).json({ error: "not_configured", message: "The assistant needs an API key first (Claude or Gemini)." });
       return;
     }
 
@@ -78,7 +86,7 @@ router.post(
     }
 
     try {
-      const result = await runAssistant(key, ctx, turns);
+      const result = await runAssistant(creds, ctx, turns);
       res.json(result);
     } catch (e) {
       const message = e instanceof Error ? e.message : "The assistant call failed.";

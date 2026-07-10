@@ -1,6 +1,6 @@
 {
   "name": "git-helper-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Desktop shell (Electron) for Git Helper — full local-git experience.",
   "main": "main.cjs",
@@ -17,8 +17,16 @@
     "appId": "com.alphavima.githelper",
     "productName": "Git Helper",
     "asar": false,
-    "files": ["main.cjs", "server.cjs", "dist/**/*", "package.json"],
-    "directories": { "output": "release" },
+    "files": [
+      "main.cjs",
+      "server.cjs",
+      "dist/**/*",
+      "mcp/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
     "publish": [
       {
         "provider": "github",
@@ -27,13 +35,35 @@
         "releaseType": "release"
       }
     ],
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
       "category": "public.app-category.developer-tools",
       "identity": null
     },
-    "linux": { "target": "AppImage", "category": "Development" }
+    "linux": {
+      "target": "AppImage",
+      "category": "Development"
+    }
   }
 }

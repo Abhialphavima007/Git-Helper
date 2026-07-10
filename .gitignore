@@ -10,5 +10,6 @@ desktop/server.cjs
 desktop/node_modules
 desktop/dist
 desktop/release
+desktop/mcp
 desktop/package-lock.json
 mcp/git-helper-mcp.mjs

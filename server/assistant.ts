@@ -5,6 +5,7 @@
 // are deliberately NOT exposed as tools.
 
 import Anthropic from "@anthropic-ai/sdk";
+import type { AssistantCredentials } from "./settings";
 import type { Connection, GitBranchStat, ListResponse, PullRequest } from "./azdo";
 import { gitGet, gitPost } from "./azdo";
 import { azureAuthArgs } from "./git";
@@ -27,7 +28,8 @@ import {
 } from "./localGit";
 import { mapPullRequest, shortRef } from "./util";
 
-const MODEL = process.env.ASSISTANT_MODEL || "claude-opus-4-8";
+const CLAUDE_MODEL = process.env.ASSISTANT_MODEL || "claude-opus-4-8";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const MAX_ITERATIONS = 8;
 
 export interface AssistantContext {
@@ -306,10 +308,15 @@ function systemPrompt(ctx: AssistantContext): string {
 }
 
 export async function runAssistant(
-  apiKey: string,
+  creds: AssistantCredentials,
   ctx: AssistantContext,
   turns: ChatTurn[]
 ): Promise<AssistantResult> {
+  if (creds.provider === "gemini") return runGemini(creds.key, ctx, turns);
+  return runClaude(creds.key, ctx, turns);
+}
+
+async function runClaude(apiKey: string, ctx: AssistantContext, turns: ChatTurn[]): Promise<AssistantResult> {
   const client = new Anthropic({ apiKey });
   const tools = toolDefs(ctx);
   const actions: string[] = [];
@@ -318,7 +325,7 @@ export async function runAssistant(
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await client.messages.create({
-      model: MODEL,
+      model: CLAUDE_MODEL,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       system: systemPrompt(ctx),
@@ -353,6 +360,101 @@ export async function runAssistant(
       .join("\n")
       .trim();
     return { reply: text || "(no reply)", actions };
+  }
+
+  return {
+    reply: "I stopped after several steps to stay safe. Here's where things stand — ask me to continue if you'd like.",
+    actions,
+  };
+}
+
+// ---- Gemini (Google AI) provider — same tools over the REST API ----
+
+interface GeminiPart {
+  text?: string;
+  functionCall?: { name: string; args?: Record<string, unknown> };
+  functionResponse?: { name: string; response: Record<string, unknown> };
+}
+interface GeminiContent {
+  role: "user" | "model";
+  parts: GeminiPart[];
+}
+
+async function runGemini(apiKey: string, ctx: AssistantContext, turns: ChatTurn[]): Promise<AssistantResult> {
+  const actions: string[] = [];
+
+  // Convert the shared tool definitions to Gemini functionDeclarations.
+  const functionDeclarations = toolDefs(ctx).map((t) => {
+    const schema = t.input_schema as { type: string; properties?: Record<string, unknown>; required?: string[] };
+    const hasProps = schema.properties && Object.keys(schema.properties).length > 0;
+    return {
+      name: t.name,
+      description: t.description ?? "",
+      // Gemini rejects empty object schemas — omit parameters for no-arg tools.
+      ...(hasProps ? { parameters: { type: "object", properties: schema.properties, ...(schema.required?.length ? { required: schema.required } : {}) } } : {}),
+    };
+  });
+
+  const contents: GeminiContent[] = turns.map((t) => ({
+    role: t.role === "assistant" ? "model" : "user",
+    parts: [{ text: t.content }],
+  }));
+
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt(ctx) }] },
+          contents,
+          tools: [{ functionDeclarations }],
+        }),
+      }
+    );
+    if (!res.ok) {
+      const body = await res.text();
+      let message = `Gemini API error (${res.status})`;
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed?.error?.message) message = `Gemini: ${parsed.error.message}`;
+      } catch {
+        /* keep generic */
+      }
+      throw new Error(message);
+    }
+
+    const data = (await res.json()) as { candidates?: Array<{ content?: GeminiContent }> };
+    const parts = data.candidates?.[0]?.content?.parts ?? [];
+    const calls = parts.filter((p) => p.functionCall);
+
+    if (calls.length === 0) {
+      const text = parts.map((p) => p.text ?? "").join("").trim();
+      return { reply: text || "(no reply)", actions };
+    }
+
+    // Echo the model turn, then answer every functionCall in one user turn.
+    contents.push({ role: "model", parts });
+    const responses: GeminiPart[] = [];
+    for (const p of calls) {
+      const call = p.functionCall!;
+      let payload: Record<string, unknown>;
+      try {
+        const raw = await execTool(ctx, call.name, (call.args ?? {}) as Record<string, unknown>);
+        actions.push(call.name);
+        try {
+          const parsed = JSON.parse(raw);
+          payload = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : { result: parsed };
+        } catch {
+          payload = { result: raw };
+        }
+      } catch (e) {
+        payload = { error: e instanceof Error ? e.message : "Tool failed" };
+      }
+      responses.push({ functionResponse: { name: call.name, response: payload } });
+    }
+    contents.push({ role: "user", parts: responses });
   }
 
   return {

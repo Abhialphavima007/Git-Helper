@@ -134,6 +134,18 @@ router.post("/close", (req, res) => {
   res.status(204).end();
 });
 
+// POST /api/local/connect-claude-desktop
+// Registers Git Helper's MCP server in Claude Desktop's config (includes the
+// current Azure connection's credentials so its Azure tools work too).
+router.post(
+  "/connect-claude-desktop",
+  asyncRoute(async (req, res) => {
+    const { connectClaudeDesktop } = await import("../claudeDesktop");
+    const result = await connectClaudeDesktop(req.session.connection ?? null);
+    res.json(result);
+  })
+);
+
 // POST /api/local/open-in-editor  { root? }
 // Open a known repo in VS Code; defaults to the currently selected one.
 router.post(

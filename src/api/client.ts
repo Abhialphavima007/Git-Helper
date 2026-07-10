@@ -234,6 +234,7 @@ export interface StoredRepo {
 
 export interface AssistantStatus {
   configured: boolean;
+  provider: "anthropic" | "gemini" | null;
   canConfigure: boolean;
 }
 
@@ -508,6 +509,12 @@ export const api = {
         body: JSON.stringify({ root, config }),
       }),
 
+    connectClaudeDesktop: () =>
+      http<{ ok: boolean; configPath: string; azureIncluded: boolean; message: string }>(
+        "/api/local/connect-claude-desktop",
+        { method: "POST" }
+      ),
+
     // ---- Advanced: stash / discard / undo / amend ----
     stashList: () => http<StashEntry[]>("/api/local/stash"),
 
@@ -536,8 +543,8 @@ export const api = {
   assistant: {
     status: () => http<AssistantStatus>("/api/assistant/status"),
 
-    setKey: (key: string) =>
-      http<{ configured: boolean }>("/api/assistant/key", { method: "POST", body: JSON.stringify({ key }) }),
+    setKey: (provider: "anthropic" | "gemini", key: string) =>
+      http<{ configured: boolean }>("/api/assistant/key", { method: "POST", body: JSON.stringify({ provider, key }) }),
 
     chat: (messages: Array<{ role: "user" | "assistant"; content: string }>, azureRepoId?: string | null) =>
       http<AssistantChatResult>("/api/assistant/chat", {

@@ -359,33 +359,39 @@ my branch into main"*.
 pushed history, or completes merges/PRs — those stay manual. If it hits a
 conflict it stops and sends you to the resolver.
 
-**One-time setup:** the assistant runs on Claude, so it needs an Anthropic API
-key (create one at `console.anthropic.com`). On the desktop/local app, paste it
-into the panel — it's stored only on your machine and used server-side. On the
-hosted web app, the site owner sets the `ANTHROPIC_API_KEY` environment
-variable instead.
+**One-time setup — pick a provider:** open the chat bubble and choose
+**Claude** or **Gemini**, then paste that provider's API key. It's stored only
+on your machine and used server-side.
 
-### No API key? Use Claude Desktop instead (MCP)
+| Provider | Where to get a key | Notes |
+|---|---|---|
+| **Claude** (Anthropic) | `console.anthropic.com` → API keys | strongest at multi-step git work |
+| **Gemini** (Google) | `aistudio.google.com` → Get API key | has a **free tier** — good starting point |
 
-If you have the **Claude Desktop app**, you can skip the API key entirely and
+On the hosted web app, the site owner sets the `ANTHROPIC_API_KEY` or
+`GEMINI_API_KEY` environment variable instead.
+
+### No API key? Connect Claude Desktop (MCP)
+
+If you have the **Claude Desktop app**, you can skip API keys entirely and
 chat with your repos *inside Claude Desktop* — Git Helper plugs in as an MCP
-server, and inference runs on your Claude subscription:
+tool provider, and inference runs on your existing Claude subscription.
 
-```bash
-npm run mcp:install       # registers "git-helper" in Claude Desktop's config
-```
+**Anyone who installed Git Helper (including from the downloaded installer):**
 
-Restart Claude Desktop, then just ask it things like *"what's the status of my
-repos?"*, *"commit my changes in payments-service"*, or *"compare my branch
-with master"*. It sees the same repository list as the app and follows the
-same safety rules (nothing destructive, conflicts are reported not "fixed").
+1. Open Git Helper → click the **chat bubble** (bottom-right).
+2. On the setup screen, click **Connect Claude Desktop**.
+3. **Restart Claude Desktop.** Done — ask it *"what's the status of my
+   repos?"*, *"commit my changes in payments-service"*, or *"compare my branch
+   with master"*.
 
-To also enable the Azure DevOps tools (list repos/branches/PRs, create a PR),
-pass your Azure details when installing:
+If you're connected to Azure DevOps in Git Helper when you click Connect, the
+Azure tools (list branches/PRs, create a PR) are wired into Claude Desktop
+too. Claude Desktop sees the same repository list as the app and follows the
+same safety rules — nothing destructive, conflicts are reported, not "fixed".
 
-```bash
-AZDO_ORG=yourorg AZDO_PROJECT="Your Project" AZDO_PAT=xxxx npm run mcp:install
-```
+*(Running from the repo instead of the installer? `npm run mcp:install` does
+the same thing from the command line.)*
 
 The in-app chat bubble and Claude Desktop work independently — use either or
 both.

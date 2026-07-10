@@ -41,6 +41,8 @@ export function AssistantPanel() {
   const [busy, setBusy] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<"anthropic" | "gemini">("anthropic");
+  const [mcpNote, setMcpNote] = useState<string | null>(null);
   const qc = useQueryClient();
   const { selectedRepoId } = useConnection();
   const { root } = useLocalRepo();
@@ -88,11 +90,21 @@ export function AssistantPanel() {
   async function saveKey() {
     setKeyError(null);
     try {
-      await api.assistant.setKey(keyInput.trim());
+      await api.assistant.setKey(provider, keyInput.trim());
       setKeyInput("");
       qc.invalidateQueries({ queryKey: ["assistant-status"] });
     } catch (e) {
       setKeyError(e instanceof ApiError ? e.message : "Couldn't save the key.");
+    }
+  }
+
+  async function connectClaudeDesktop() {
+    setMcpNote(null);
+    try {
+      const r = await api.local.connectClaudeDesktop();
+      setMcpNote(`✅ ${r.message}`);
+    } catch (e) {
+      setMcpNote(`⚠️ ${e instanceof ApiError ? e.message : "Couldn't connect Claude Desktop."}`);
     }
   }
 
@@ -148,17 +160,37 @@ export function AssistantPanel() {
                 {status.canConfigure ? (
                   <>
                     <p className="mt-1.5 text-sm text-muted">
-                      The assistant runs on Claude. Paste an Anthropic API key — it's stored only on this machine and
-                      used server-side, never in the browser.
+                      Pick an AI provider and paste its API key — it's stored only on this machine and used
+                      server-side, never in the browser.
                     </p>
-                    <p className="mt-1.5 text-xs text-muted">
-                      Get a key at <span className="font-mono">console.anthropic.com</span> → API keys.
+                    <div className="mt-3 inline-flex rounded-lg border border-line bg-card p-0.5">
+                      {(["anthropic", "gemini"] as const).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => {
+                            setProvider(p);
+                            setKeyError(null);
+                          }}
+                          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                            provider === p ? "bg-accent/10 text-accent" : "text-muted hover:text-ink"
+                          }`}
+                        >
+                          {p === "anthropic" ? "Claude" : "Gemini"}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-muted">
+                      {provider === "anthropic" ? (
+                        <>Get a key at <span className="font-mono">console.anthropic.com</span> → API keys.</>
+                      ) : (
+                        <>Get a free key at <span className="font-mono">aistudio.google.com</span> → Get API key.</>
+                      )}
                     </p>
                     <input
                       type="password"
                       value={keyInput}
                       onChange={(e) => setKeyInput(e.target.value)}
-                      placeholder="sk-ant-…"
+                      placeholder={provider === "anthropic" ? "sk-ant-…" : "AIza…"}
                       className="mt-3 w-full rounded-lg border border-line bg-card px-3 py-2 font-mono text-sm text-ink focus-visible:border-accent"
                     />
                     {keyError && <p className="mt-1.5 text-xs text-danger">{keyError}</p>}
@@ -169,11 +201,28 @@ export function AssistantPanel() {
                     >
                       Save key
                     </button>
+
+                    <div className="mt-5 flex items-center gap-3">
+                      <span className="h-px flex-1 bg-line" />
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted">or, no key at all</span>
+                      <span className="h-px flex-1 bg-line" />
+                    </div>
+                    <p className="mt-3 text-sm text-muted">
+                      Have the <b>Claude Desktop app</b>? Connect it once and chat with your repos there — runs on
+                      your Claude subscription, no API key.
+                    </p>
+                    <button
+                      onClick={connectClaudeDesktop}
+                      className="mt-2 w-full rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-paper"
+                    >
+                      Connect Claude Desktop
+                    </button>
+                    {mcpNote && <p className="mt-2 text-xs text-muted">{mcpNote}</p>}
                   </>
                 ) : (
                   <p className="mt-1.5 text-sm text-muted">
                     On the hosted app, the site owner enables the assistant by setting the{" "}
-                    <span className="font-mono">ANTHROPIC_API_KEY</span> environment variable.
+                    <span className="font-mono">ANTHROPIC_API_KEY</span> (or <span className="font-mono">GEMINI_API_KEY</span>) environment variable.
                   </p>
                 )}
               </div>
