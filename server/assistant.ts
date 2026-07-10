@@ -29,7 +29,11 @@ import {
 import { mapPullRequest, shortRef } from "./util";
 
 const CLAUDE_MODEL = process.env.ASSISTANT_MODEL || "claude-opus-4-8";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// First model that the key can use wins; different Google accounts/regions
+// expose different model sets, so don't hard-fail on one name.
+const GEMINI_MODELS = process.env.GEMINI_MODEL
+  ? [process.env.GEMINI_MODEL]
+  : ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-1.5-flash"];
 const MAX_ITERATIONS = 8;
 
 export interface AssistantContext {
@@ -400,19 +404,36 @@ async function runGemini(apiKey: string, ctx: AssistantContext, turns: ChatTurn[
     parts: [{ text: t.content }],
   }));
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
-      {
+  // Not every key/region has every model — find one that answers.
+  let model: string | null = null;
+
+  async function callGemini(body: unknown): Promise<Response> {
+    const attempt = async (m: string) =>
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt(ctx) }] },
-          contents,
-          tools: [{ functionDeclarations }],
-        }),
+        body: JSON.stringify(body),
+      });
+    if (model) return attempt(model);
+    let last: Response | null = null;
+    for (const m of GEMINI_MODELS) {
+      const res = await attempt(m);
+      if (res.status === 404) {
+        last = res;
+        continue; // model not available for this key — try the next
       }
-    );
+      model = m;
+      return res;
+    }
+    return last!;
+  }
+
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const res = await callGemini({
+      system_instruction: { parts: [{ text: systemPrompt(ctx) }] },
+      contents,
+      tools: [{ functionDeclarations }],
+    });
     if (!res.ok) {
       const body = await res.text();
       let message = `Gemini API error (${res.status})`;

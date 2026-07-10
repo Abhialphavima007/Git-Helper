@@ -379,11 +379,18 @@ tool provider, and inference runs on your existing Claude subscription.
 
 **Anyone who installed Git Helper (including from the downloaded installer):**
 
-1. Open Git Helper → click the **chat bubble** (bottom-right).
-2. On the setup screen, click **Connect Claude Desktop**.
-3. **Restart Claude Desktop.** Done — ask it *"what's the status of my
-   repos?"*, *"commit my changes in payments-service"*, or *"compare my branch
-   with master"*.
+> ⚠️ **The order matters.** Claude Desktop overwrites this setting if it's
+> running while you connect — quit it first.
+
+1. **Quit Claude Desktop completely** (File → Exit / right-click the tray icon
+   → Quit — closing the window is not enough).
+2. Open **Git Helper** → click the **chat bubble** (bottom-right) → click
+   **Connect Claude Desktop**. (The button warns you if Claude Desktop is
+   still running.)
+3. **Start Claude Desktop.** In Settings → Developer you should see
+   **git-helper** listed as running.
+4. In a new chat, ask *"what's the status of my repos?"*, *"commit my changes
+   in payments-service"*, or *"compare my branch with master"*.
 
 If you're connected to Azure DevOps in Git Helper when you click Connect, the
 Azure tools (list branches/PRs, create a PR) are wired into Claude Desktop

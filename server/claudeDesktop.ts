@@ -6,9 +6,25 @@
 
 import { promises as fs } from "node:fs";
 import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import type { Connection } from "./azdo";
+
+// Claude Desktop keeps its config in memory and rewrites the file — an entry
+// added while it's running gets wiped. Detect that so we can warn the user to
+// quit it first.
+function isClaudeDesktopRunning(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (process.platform === "win32") {
+      execFile("tasklist", ["/FI", "IMAGENAME eq claude.exe", "/FO", "CSV", "/NH"], (err, out) =>
+        resolve(!err && /claude\.exe/i.test(out))
+      );
+    } else {
+      execFile("pgrep", ["-xi", "Claude"], (err, out) => resolve(!err && out.trim().length > 0));
+    }
+  });
+}
 
 function configPath(): string {
   if (process.platform === "win32") {
@@ -23,8 +39,10 @@ function configPath(): string {
 // The bundled MCP server ships next to the desktop server; in dev it lives in
 // the repo's mcp/ folder.
 function findBundle(): string | null {
+  // __dirname exists in the CJS desktop bundle but not under ESM dev servers.
+  const selfDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
   const candidates = [
-    path.join(__dirname, "mcp", "git-helper-mcp.mjs"), // packaged desktop (next to server.cjs)
+    path.join(selfDir, "mcp", "git-helper-mcp.mjs"), // packaged desktop (next to server.cjs)
     path.join(process.cwd(), "mcp", "git-helper-mcp.mjs"), // dev from repo root
     path.join(process.cwd(), "..", "mcp", "git-helper-mcp.mjs"),
   ];
@@ -42,6 +60,7 @@ export interface ConnectResult {
   ok: boolean;
   configPath: string;
   azureIncluded: boolean;
+  claudeWasRunning: boolean;
   message: string;
 }
 
@@ -87,10 +106,10 @@ export async function connectClaudeDesktop(connection: Connection | null): Promi
   await fs.writeFile(cfgPath, JSON.stringify(config, null, 2), "utf8");
 
   const azureIncluded = !!env.AZDO_PAT;
-  return {
-    ok: true,
-    configPath: cfgPath,
-    azureIncluded,
-    message: `Connected. Restart Claude Desktop, then ask it e.g. "what's the status of my repos?"${azureIncluded ? " Azure DevOps tools are included." : ""}`,
-  };
+  const claudeWasRunning = await isClaudeDesktopRunning();
+  const message = claudeWasRunning
+    ? "Almost there — Claude Desktop is currently running, and it overwrites this setting when it exits. Please QUIT Claude Desktop completely now (File → Exit, not just the window), then click this button once more, then start Claude Desktop."
+    : `Connected. Start Claude Desktop, then ask it e.g. "what's the status of my repos?"${azureIncluded ? " Azure DevOps tools are included." : ""}`;
+
+  return { ok: true, configPath: cfgPath, azureIncluded, claudeWasRunning, message };
 }
