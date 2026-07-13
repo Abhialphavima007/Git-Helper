@@ -521,17 +521,41 @@ export async function diffFile(root: string, file: string, staged: boolean): Pro
   args.push("--", file);
   const out = await runGit(root, args);
   if (out.trim() === "" && !staged) {
-    // Untracked file — show its full content as additions.
-    try {
-      return await runGit(root, ["diff", "--no-color", "--no-index", "--", "/dev/null", file]);
-    } catch (e) {
-      // --no-index returns exit code 1 when files differ; the diff is still on stdout.
-      const msg = e instanceof Error ? (e as { message?: string }).message ?? "" : "";
-      if (msg.includes("@@") || msg.includes("+++")) return msg;
-      return out;
-    }
+    // Untracked file — git diff knows nothing about it, so synthesize an
+    // all-additions diff from the file content. (git diff --no-index exits 1
+    // with the diff on stdout, which the error path throws away — reading the
+    // file directly is simpler and works on every platform.)
+    return untrackedFileDiff(root, file);
   }
   return out;
+}
+
+const MAX_UNTRACKED_DIFF_LINES = 5000;
+
+async function untrackedFileDiff(root: string, file: string): Promise<string> {
+  const abs = path.resolve(root, file);
+  if (!abs.startsWith(path.resolve(root))) return ""; // never read outside the repo
+  let buf: Buffer;
+  try {
+    buf = await fs.readFile(abs);
+  } catch {
+    return "";
+  }
+  const header = `diff --git a/${file} b/${file}\nnew file mode 100644\n--- /dev/null\n+++ b/${file}\n`;
+  if (buf.includes(0)) {
+    return `${header}Binary file (${buf.length.toLocaleString()} bytes) — no text preview.\n`;
+  }
+  let lines = buf.toString("utf8").split(/\r\n|\r|\n/);
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop(); // trailing newline
+  let truncated = "";
+  if (lines.length > MAX_UNTRACKED_DIFF_LINES) {
+    truncated = `\n… (${(lines.length - MAX_UNTRACKED_DIFF_LINES).toLocaleString()} more lines not shown)`;
+    lines = lines.slice(0, MAX_UNTRACKED_DIFF_LINES);
+  }
+  if (lines.length === 0) {
+    return `${header}@@ -0,0 +0,0 @@\n(new empty file)\n`;
+  }
+  return `${header}@@ -0,0 +1,${lines.length} @@\n${lines.map((l) => `+${l}`).join("\n")}${truncated}\n`;
 }
 
 // ---- Stash ----

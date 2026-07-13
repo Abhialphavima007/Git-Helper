@@ -162,7 +162,9 @@ router.post(
   "/connect-claude-desktop",
   asyncRoute(async (req, res) => {
     const { connectClaudeDesktop } = await import("../claudeDesktop");
-    const result = await connectClaudeDesktop(req.session.connection ?? null);
+    const result = await connectClaudeDesktop(req.session.connection ?? null, {
+      forceQuit: req.body?.forceQuit === true,
+    });
     res.json(result);
   })
 );

@@ -569,14 +569,21 @@ export const api = {
         body: JSON.stringify({ root, config }),
       }),
 
-    connectClaudeDesktop: () =>
-      http<{ ok: boolean; configPath: string; azureIncluded: boolean; message: string }>(
-        "/api/local/connect-claude-desktop",
-        { method: "POST" }
-      ),
+    connectClaudeDesktop: (forceQuit = false) =>
+      http<{
+        ok: boolean;
+        configPath: string;
+        azureIncluded: boolean;
+        claudeWasRunning: boolean;
+        launched: boolean;
+        canForceQuit: boolean;
+        message: string;
+      }>("/api/local/connect-claude-desktop", { method: "POST", body: JSON.stringify({ forceQuit }) }),
 
     disconnectClaudeDesktop: () =>
-      http<{ ok: boolean; message: string }>("/api/local/disconnect-claude-desktop", { method: "POST" }),
+      http<{ ok: boolean; canForceQuit: boolean; message: string }>("/api/local/disconnect-claude-desktop", {
+        method: "POST",
+      }),
 
     // ---- Advanced: stash / discard / undo / amend ----
     stashList: () => http<StashEntry[]>("/api/local/stash"),

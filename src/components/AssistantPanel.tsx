@@ -42,7 +42,8 @@ export function AssistantPanel() {
   const [keyInput, setKeyInput] = useState("");
   const [keyError, setKeyError] = useState<string | null>(null);
   const [provider, setProvider] = useState<"anthropic" | "gemini">("anthropic");
-  const [mcpNote, setMcpNote] = useState<string | null>(null);
+  const [mcpNote, setMcpNote] = useState<{ kind: "ok" | "warn" | "err"; text: string; offerQuit?: boolean } | null>(null);
+  const [mcpBusy, setMcpBusy] = useState<"connect" | "disconnect" | "force" | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const qc = useQueryClient();
   const { selectedRepoId } = useConnection();
@@ -113,21 +114,31 @@ export function AssistantPanel() {
 
   async function disconnectClaudeDesktop() {
     setMcpNote(null);
+    setMcpBusy("disconnect");
     try {
       const r = await api.local.disconnectClaudeDesktop();
-      setMcpNote(`✅ ${r.message}`);
+      setMcpNote({ kind: r.canForceQuit ? "warn" : "ok", text: r.message });
     } catch (e) {
-      setMcpNote(`⚠️ ${e instanceof ApiError ? e.message : "Couldn't disconnect Claude Desktop."}`);
+      setMcpNote({ kind: "err", text: e instanceof ApiError ? e.message : "Couldn't disconnect Claude Desktop." });
+    } finally {
+      setMcpBusy(null);
     }
   }
 
-  async function connectClaudeDesktop() {
+  async function connectClaudeDesktop(forceQuit = false) {
     setMcpNote(null);
+    setMcpBusy(forceQuit ? "force" : "connect");
     try {
-      const r = await api.local.connectClaudeDesktop();
-      setMcpNote(`✅ ${r.message}`);
+      const r = await api.local.connectClaudeDesktop(forceQuit);
+      if (r.canForceQuit) {
+        setMcpNote({ kind: "warn", text: r.message, offerQuit: true });
+      } else {
+        setMcpNote({ kind: "ok", text: r.message });
+      }
     } catch (e) {
-      setMcpNote(`⚠️ ${e instanceof ApiError ? e.message : "Couldn't connect Claude Desktop."}`);
+      setMcpNote({ kind: "err", text: e instanceof ApiError ? e.message : "Couldn't connect Claude Desktop." });
+    } finally {
+      setMcpBusy(null);
     }
   }
 
@@ -142,11 +153,15 @@ export function AssistantPanel() {
             onClick={() => setOpen(true)}
             title="AI assistant"
             aria-label="Open AI assistant"
-            className="fixed bottom-5 right-5 z-40 grid h-12 w-12 place-items-center rounded-full bg-accent text-white shadow-lg transition-transform hover:scale-105"
+            style={{ background: "linear-gradient(135deg, rgb(var(--accent)) 0%, rgb(var(--accent-hover)) 100%)" }}
+            className="group fixed bottom-5 right-5 z-40 grid h-[52px] w-[52px] place-items-center rounded-2xl text-white shadow-lg ring-1 ring-white/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-accent/40 active:translate-y-0"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.4-.7L3 21l1.8-4.4a8.4 8.4 0 1 1 16.2-5.1z" />
-              <path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01" strokeWidth="2.4" />
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="transition-transform duration-200 group-hover:scale-110">
+              {/* main sparkle */}
+              <path d="M11 4l1.7 4.6a1 1 0 0 0 .6.6L18 11l-4.7 1.8a1 1 0 0 0-.6.6L11 18l-1.7-4.6a1 1 0 0 0-.6-.6L4 11l4.7-1.8a1 1 0 0 0 .6-.6L11 4z" />
+              {/* small companion sparkles */}
+              <path d="M18.5 3.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z" opacity="0.9" />
+              <path d="M18 15.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7z" opacity="0.75" />
             </svg>
           </button>,
           document.body
@@ -282,20 +297,46 @@ export function AssistantPanel() {
                         </p>
                         <div className="mt-2 flex gap-2">
                           <button
-                            onClick={connectClaudeDesktop}
-                            className="flex-1 rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-paper"
+                            onClick={() => connectClaudeDesktop(false)}
+                            disabled={mcpBusy !== null}
+                            className="flex-1 rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:bg-accent/5 hover:text-accent disabled:opacity-60"
                           >
-                            Connect Claude Desktop
+                            {mcpBusy === "connect" ? "Connecting…" : "Connect Claude Desktop"}
                           </button>
                           <button
                             onClick={disconnectClaudeDesktop}
+                            disabled={mcpBusy !== null}
                             title="Remove Git Helper from Claude Desktop"
-                            className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-muted hover:bg-paper hover:text-danger"
+                            className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-muted transition-colors hover:border-danger/50 hover:bg-danger/5 hover:text-danger disabled:opacity-60"
                           >
-                            Disconnect
+                            {mcpBusy === "disconnect" ? "Removing…" : "Disconnect"}
                           </button>
                         </div>
-                        {mcpNote && <p className="mt-2 text-xs text-muted">{mcpNote}</p>}
+                        {mcpNote && (
+                          <div
+                            className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
+                              mcpNote.kind === "ok"
+                                ? "border-ok/40 bg-ok/10 text-ink"
+                                : mcpNote.kind === "warn"
+                                  ? "border-warn/40 bg-warn/10 text-ink"
+                                  : "border-danger/40 bg-danger/10 text-ink"
+                            }`}
+                          >
+                            <p>
+                              {mcpNote.kind === "ok" ? "✓ " : "⚠ "}
+                              {mcpNote.text}
+                            </p>
+                            {mcpNote.offerQuit && (
+                              <button
+                                onClick={() => connectClaudeDesktop(true)}
+                                disabled={mcpBusy !== null}
+                                className="mt-2 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-60"
+                              >
+                                {mcpBusy === "force" ? "Quitting & connecting…" : "Quit Claude Desktop for me & connect"}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                   </>
