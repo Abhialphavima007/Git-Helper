@@ -36,6 +36,27 @@ function configPath(): string {
   return path.join(os.homedir(), ".config", "Claude", "claude_desktop_config.json");
 }
 
+// The Microsoft Store (MSIX) build of Claude Desktop is filesystem-virtualized:
+// it reads/writes its config under Packages\Claude_*\LocalCache\Roaming, NOT
+// %APPDATA%\Claude. Writing only the classic path looks like it worked while
+// the Store app never sees the entry. So we target every location that exists.
+function configPaths(): string[] {
+  const paths = [configPath()];
+  if (process.platform === "win32") {
+    const packages = path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Packages");
+    try {
+      for (const dir of readdirSync(packages)) {
+        if (/^Claude_/i.test(dir)) {
+          paths.push(path.join(packages, dir, "LocalCache", "Roaming", "Claude", "claude_desktop_config.json"));
+        }
+      }
+    } catch {
+      /* no Packages dir */
+    }
+  }
+  return paths;
+}
+
 // Where the Claude Desktop app itself lives (null if not found).
 function claudeAppPath(): string | null {
   if (process.platform === "win32") {
@@ -184,41 +205,47 @@ export async function connectClaudeDesktop(
     running = await isClaudeDesktopRunning();
   }
 
-  // Fresh machine where Claude is installed but was never run: the config
-  // folder doesn't exist yet. Create it instead of refusing.
-  await fs.mkdir(path.dirname(cfgPath), { recursive: true });
+  // Write the entry into EVERY config Claude might read: the classic
+  // %APPDATA% path and the Store build's virtualized one. Each file is merged
+  // separately so other servers (and their differences per file) survive.
+  const targets = configPaths();
+  let azureIncluded = false;
+  for (const target of targets) {
+    // Fresh machine where Claude is installed but was never run: the config
+    // folder doesn't exist yet. Create it instead of refusing.
+    await fs.mkdir(path.dirname(target), { recursive: true });
 
-  let config: Record<string, unknown> = {};
-  if (existsSync(cfgPath)) {
-    await fs.copyFile(cfgPath, cfgPath + ".backup");
-    try {
-      config = JSON.parse(await fs.readFile(cfgPath, "utf8"));
-    } catch {
-      throw new Error("Claude Desktop's config file exists but couldn't be read — fix or remove it and try again.");
+    let config: Record<string, unknown> = {};
+    if (existsSync(target)) {
+      await fs.copyFile(target, target + ".backup");
+      try {
+        config = JSON.parse(await fs.readFile(target, "utf8"));
+      } catch {
+        throw new Error(`Claude Desktop's config file exists but couldn't be read (${target}) — fix or remove it and try again.`);
+      }
     }
-  }
 
-  const servers = (config.mcpServers as Record<string, unknown> | undefined) ?? {};
+    const servers = (config.mcpServers as Record<string, unknown> | undefined) ?? {};
 
-  const env: Record<string, string> = { ELECTRON_RUN_AS_NODE: "1" };
-  if (connection) {
-    env.AZDO_ORG = connection.org;
-    env.AZDO_PROJECT = connection.project;
-    env.AZDO_PAT = connection.pat;
-  } else {
-    // Preserve previously-stored Azure credentials on re-connect.
-    const prev = servers["git-helper"] as { env?: Record<string, string> } | undefined;
-    for (const k of ["AZDO_ORG", "AZDO_PROJECT", "AZDO_PAT"]) {
-      if (prev?.env?.[k]) env[k] = prev.env[k];
+    const env: Record<string, string> = { ELECTRON_RUN_AS_NODE: "1" };
+    if (connection) {
+      env.AZDO_ORG = connection.org;
+      env.AZDO_PROJECT = connection.project;
+      env.AZDO_PAT = connection.pat;
+    } else {
+      // Preserve previously-stored Azure credentials on re-connect.
+      const prev = servers["git-helper"] as { env?: Record<string, string> } | undefined;
+      for (const k of ["AZDO_ORG", "AZDO_PROJECT", "AZDO_PAT"]) {
+        if (prev?.env?.[k]) env[k] = prev.env[k];
+      }
     }
+
+    servers["git-helper"] = { command: process.execPath, args: [bundle], env };
+    config.mcpServers = servers;
+
+    await fs.writeFile(target, JSON.stringify(config, null, 2), "utf8");
+    azureIncluded = azureIncluded || !!env.AZDO_PAT;
   }
-
-  servers["git-helper"] = { command: process.execPath, args: [bundle], env };
-  config.mcpServers = servers;
-
-  await fs.writeFile(cfgPath, JSON.stringify(config, null, 2), "utf8");
-
-  const azureIncluded = !!env.AZDO_PAT;
 
   if (running) {
     // Still running and the user hasn't asked us to quit it.
@@ -245,25 +272,25 @@ export async function connectClaudeDesktop(
 }
 
 // Remove Git Helper from Claude Desktop's config (the reverse of connect).
+// Sweeps every config location, classic and Store-virtualized alike.
 export async function disconnectClaudeDesktop(): Promise<ConnectResult> {
   const cfgPath = configPath();
-  if (!existsSync(cfgPath)) {
-    return { ok: true, configPath: cfgPath, azureIncluded: false, claudeWasRunning: false, launched: false, canForceQuit: false, message: "Nothing to disconnect — Claude Desktop has no Git Helper entry." };
+  let existed = false;
+  for (const target of configPaths()) {
+    if (!existsSync(target)) continue;
+    await fs.copyFile(target, target + ".backup");
+    let config: Record<string, unknown>;
+    try {
+      config = JSON.parse(await fs.readFile(target, "utf8"));
+    } catch {
+      throw new Error(`Claude Desktop's config file couldn't be read (${target}) — fix or remove it manually.`);
+    }
+    const servers = (config.mcpServers as Record<string, unknown> | undefined) ?? {};
+    if ("git-helper" in servers) existed = true;
+    delete servers["git-helper"];
+    config.mcpServers = servers;
+    await fs.writeFile(target, JSON.stringify(config, null, 2), "utf8");
   }
-
-  await fs.copyFile(cfgPath, cfgPath + ".backup");
-  let config: Record<string, unknown>;
-  try {
-    config = JSON.parse(await fs.readFile(cfgPath, "utf8"));
-  } catch {
-    throw new Error("Claude Desktop's config file couldn't be read — fix or remove it manually.");
-  }
-
-  const servers = (config.mcpServers as Record<string, unknown> | undefined) ?? {};
-  const existed = "git-helper" in servers;
-  delete servers["git-helper"];
-  config.mcpServers = servers;
-  await fs.writeFile(cfgPath, JSON.stringify(config, null, 2), "utf8");
 
   const claudeWasRunning = await isClaudeDesktopRunning();
   const message = !existed
