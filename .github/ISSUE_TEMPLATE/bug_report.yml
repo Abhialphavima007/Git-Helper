@@ -1,0 +1,37 @@
+name: Bug report
+description: Something isn't working the way the app says it should
+labels: [bug]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      options:
+        - Desktop app (Windows)
+        - Desktop app (macOS)
+        - Hosted web app
+        - Running from source (npm run dev)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Desktop → installer version (e.g. 0.3.4); web → just say "hosted".
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: >
+        What did you do, what did you expect, what happened instead?
+        Screenshots of the Status page / error box help a lot.
+        ⚠ Never paste a PAT, API key, or claude_desktop_config.json contents.
+    validations:
+      required: true
+  - type: textarea
+    id: repo-state
+    attributes:
+      label: Repo state (if relevant)
+      description: e.g. "branch main, 2 ahead 12 behind, merge in progress" — the Status page shows this.

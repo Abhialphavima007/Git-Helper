@@ -1,0 +1,55 @@
+# Quality gates for every contribution. Runs on PRs (including from forks —
+# no secrets are used here) and on pushes to the integration branches.
+# Preview deployments are handled separately by the Vercel Git integration:
+# every push to `develop` / authorized PR gets its own preview URL.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Typecheck & build (web, serverless, desktop bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build web + serverless bundle
+        run: npm run build:vercel
+      - name: Build desktop server + MCP bundle
+        run: npm run desktop:build
+
+  audit:
+    name: Dependency audit (informational)
+    runs-on: ubuntu-latest
+    # Reports known vulnerabilities without blocking contributors on issues
+    # that live in transitive dev-dependencies. Maintainers watch this job.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high

@@ -1,5 +1,9 @@
 # Azure DevOps Git Helper
 
+[![CI](https://github.com/Abhialphavima007/Git-Helper/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhialphavima007/Git-Helper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/Abhialphavima007/Git-Helper)](https://github.com/Abhialphavima007/Git-Helper/releases/latest)
+
 > **Download the desktop app:** grab the installer for Windows or macOS from the
 > [latest release](https://github.com/Abhialphavima007/Git-Helper/releases/latest).
 > (Unsigned builds — see [desktop/README.md](desktop/README.md) for the
@@ -13,7 +17,12 @@ A friendly visual layer over **Azure DevOps Repos** *and your **local Git** repo
 
 This is a **single Vite + React + Tailwind app**. The small Azure DevOps proxy runs as **Vite middleware**, so everything is one folder, one `package.json`, one command — while the PAT still stays **server-side** and never reaches the browser.
 
-MVP scope = build steps **1–3** (remote-only, Azure DevOps REST API v7.1).
+**Open source & contributions:** Git Helper is MIT-licensed. Contributions
+land on the [`develop`](https://github.com/Abhialphavima007/Git-Helper/tree/develop)
+branch, where every push gets an automatic **preview deployment** for review
+before being promoted to `main`. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ---
 
@@ -73,7 +82,7 @@ Browser (React + Vite, port 5173)
         │  /api/*  (same origin — no CORS)
         ▼
 Express proxy mounted as Vite middleware   ──HTTPS──►  Azure DevOps REST v7.1
-   PAT lives here, in express-session
+   PAT lives here, in an AES-256-GCM-encrypted session cookie
 ```
 
 - `src/` — the React app (TypeScript, Tailwind, TanStack Query, React Router).
@@ -118,15 +127,32 @@ Azure DevOps → **User settings → Personal access tokens → New Token**.
 
 ---
 
-## Roadmap (not yet built)
+## Beyond the basics (all built)
 
-4. PR creation flow
-5. Conflict detection + three-pane resolution wizard (with conflict-API retry/polling for eventual consistency)
-6. PR completion flow (merge-strategy explainer, auto-complete)
-7. Notifications / "needs attention" inbox
-8. Work-item linking
+- **Undo & restore** — unstage, stash, discard, undo last commit, revert any
+  commit, rewind (soft/mixed/hard with pushed-history protection), and a
+  reflog rescue list. Cloud undo creates a revert PR via Azure's revert API.
+- **Recovery & sync** — a "repo doctor" that fetches first, detects awkward
+  situations (accidental merge, wrong-branch commits, detached HEAD, far
+  behind, forgotten stashes, noise commits) and turns each into a guided,
+  confirmed action with the exact git command shown.
+- **Are-you-sure dialogs** — fetch/pull/push explain what will happen and
+  what they affect before running; destructive actions need typed confirms.
+- **AI assistant** — a chat bubble that can operate the repo (Claude or
+  Gemini, bring-your-own-key) plus an **MCP server** so Claude Desktop can
+  drive your repos with no API key.
+- **Auto-commit** — per-repo schedules (daily / every 2 days / custom
+  weekdays, at a chosen time, pinned to a branch) or dynamic on-change mode.
 
-Future: full branch-policy evaluation surfacing, and Microsoft Entra ID OAuth to replace PAT.
+## Roadmap ideas
+
+- Notifications / "needs attention" inbox
+- Work-item linking
+- Branch-policy evaluation surfacing
+- Microsoft Entra ID OAuth to replace PATs
+- Code signing for the installers
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

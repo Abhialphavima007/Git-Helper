@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest something that would make git easier for non-git people
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the situation you're stuck in?
+      description: Describe the moment where the app didn't help you — that's more useful than a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where should it live?
+      options:
+        - Local git (desktop)
+        - Azure DevOps (cloud)
+        - Both
+        - AI assistant / Claude Desktop
+        - Not sure
