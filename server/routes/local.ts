@@ -123,8 +123,10 @@ router.post(
   })
 );
 
-// POST /api/local/autocommit  { root, config: {enabled, mode, everyHours} | null }
-// Configure per-repo automatic commits (interval or on-change).
+// POST /api/local/autocommit
+// { root, config: {enabled, mode, everyHours?, atTime?, everyDays?, days?} | null }
+// Configure per-repo automatic commits (scheduled time-of-day, custom
+// weekdays, legacy interval, or on-change).
 router.post(
   "/autocommit",
   asyncRoute(async (req, res) => {
@@ -134,11 +136,23 @@ router.post(
       return;
     }
     const cfg = req.body?.config;
-    let patch: { enabled: boolean; mode: "interval" | "onChange"; everyHours: number } | null = null;
+    let patch: Parameters<typeof updateAutoCommit>[1] = null;
     if (cfg && typeof cfg === "object") {
-      const mode = cfg.mode === "onChange" ? "onChange" : "interval";
+      const mode = cfg.mode === "onChange" ? "onChange" : cfg.mode === "schedule" ? "schedule" : "interval";
       const everyHours = Math.min(Math.max(Number(cfg.everyHours) || 24, 1), 24 * 14);
       patch = { enabled: !!cfg.enabled, mode, everyHours };
+      if (mode === "schedule") {
+        const atTime = typeof cfg.atTime === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(cfg.atTime) ? cfg.atTime : "18:00";
+        const everyDays = Math.min(Math.max(Number(cfg.everyDays) || 1, 1), 14);
+        const days: number[] | undefined = Array.isArray(cfg.days)
+          ? [...new Set((cfg.days as unknown[]).map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))]
+          : undefined;
+        patch = { ...patch, atTime, everyDays, days: days && days.length > 0 ? days : undefined };
+        if (days !== undefined && days.length === 0) {
+          res.status(400).json({ error: "no_days", message: "Pick at least one weekday for a custom schedule." });
+          return;
+        }
+      }
     }
     const repo = await updateAutoCommit(root, patch);
     if (!repo) {

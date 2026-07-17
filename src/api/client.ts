@@ -267,8 +267,11 @@ export interface LocalRepoState {
 
 export interface AutoCommitConfig {
   enabled: boolean;
-  mode: "interval" | "onChange";
+  mode: "interval" | "onChange" | "schedule";
   everyHours: number;
+  atTime?: string; // "HH:mm" — schedule mode
+  everyDays?: number; // schedule mode: 1 = daily, 2 = every 2 days
+  days?: number[]; // schedule mode: custom weekdays 0=Sun … 6=Sat
   lastRun?: string;
   lastResult?: string;
 }
@@ -563,7 +566,10 @@ export const api = {
         body: JSON.stringify(root ? { root } : {}),
       }),
 
-    setAutoCommit: (root: string, config: Pick<AutoCommitConfig, "enabled" | "mode" | "everyHours"> | null) =>
+    setAutoCommit: (
+      root: string,
+      config: Pick<AutoCommitConfig, "enabled" | "mode" | "everyHours" | "atTime" | "everyDays" | "days"> | null
+    ) =>
       http<StoredRepo>("/api/local/autocommit", {
         method: "POST",
         body: JSON.stringify({ root, config }),

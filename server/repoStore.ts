@@ -11,10 +11,15 @@ const FILE = path.join(DIR, "repos.json");
 
 export interface AutoCommitConfig {
   enabled: boolean;
-  // "interval": commit on a fixed cadence when there are changes.
+  // "schedule": commit at a chosen time of day, daily / every N days / on
+  //   chosen weekdays.
   // "onChange" (dynamic): commit shortly after changes appear (checked ~5 min).
-  mode: "interval" | "onChange";
+  // "interval": legacy fixed cadence (configs saved before times existed).
+  mode: "interval" | "onChange" | "schedule";
   everyHours: number; // interval mode: 24 = daily, 48 = alternate days
+  atTime?: string; // schedule mode: "HH:mm" local time to commit at
+  everyDays?: number; // schedule mode: 1 = daily, 2 = every 2 days (used when no days list)
+  days?: number[]; // schedule mode: custom weekdays, 0=Sun … 6=Sat (overrides everyDays)
   lastRun?: string; // ISO timestamp of the last successful auto-commit
   lastResult?: string; // human-readable outcome of the last attempt
 }

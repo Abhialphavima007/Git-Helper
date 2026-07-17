@@ -151,9 +151,11 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Backdrop for the mobile drawer */}
       {drawerOpen && <div className="fixed inset-0 z-30 bg-ink/40 lg:hidden" onClick={closeDrawer} aria-hidden />}
 
-      {/* Sidebar: slide-in drawer on mobile, static (collapsible) column on desktop */}
+      {/* Sidebar: slide-in drawer on mobile; on desktop a sticky column pinned
+          to the viewport (its own scrollbar) so long pages scroll under it
+          instead of stretching it. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[272px] max-w-[85vw] transform border-r border-line bg-card transition-transform duration-200 lg:static lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-[272px] max-w-[85vw] transform border-r border-line bg-card transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-auto lg:max-w-none lg:translate-x-0 lg:self-start lg:overflow-hidden ${
           drawerOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >

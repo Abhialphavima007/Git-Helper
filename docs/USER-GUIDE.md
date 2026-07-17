@@ -448,13 +448,18 @@ Click the **gear icon** in the assistant panel's header to open its settings:
 
 On the [Status page](#4-status--your-home-screen), the **Auto-commit** card
 lets each repository commit its outstanding changes automatically — off by
-default, enable it per repo with the toggle. Three schedules:
+default, enable it per repo with the toggle. Four schedules:
 
 | Schedule | Behavior |
 |---|---|
-| **Daily** | Once a day, commits whatever changed (skips if nothing changed) |
-| **Every 2 days** | Same, on alternate days |
+| **Daily** | Once a day **at the time you pick** (skips if nothing changed) |
+| **Every 2 days** | Same, on alternate days at your chosen time |
+| **Custom days…** | Pick exactly which weekdays (Mon–Sun chips) **and** the time — e.g. Mon/Wed/Fri at 17:30 |
 | **When changes appear (dynamic)** | Commits shortly after changes show up (at most every 5 minutes) |
+
+For the scheduled options, a **"Commit at"** time field appears (your local
+time). If the app wasn't open at that moment, the commit happens the next
+time it's open after the scheduled time that day.
 
 Auto-commits are clearly labelled (*"Auto-commit (Git Helper): 3 files —
 2026-07-10 14:00"*), and the card shows the last run's result. Safety rules:
