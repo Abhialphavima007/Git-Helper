@@ -10,7 +10,7 @@
     "dist": "npm --prefix .. run desktop:build && electron-builder"
   },
   "devDependencies": {
-    "electron": "^33.0.0",
+    "electron": "^43.1.1",
     "electron-builder": "^25.1.8"
   },
   "build": {
