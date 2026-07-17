@@ -22,7 +22,7 @@ jobs:
     name: Typecheck & build (web, serverless, desktop bundle)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -44,7 +44,7 @@ jobs:
     # that live in transitive dev-dependencies. Maintainers watch this job.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
