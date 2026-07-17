@@ -1,13 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type AutoCommitConfig } from "../api/client";
+import { api, ApiError, type AutoCommitConfig, type ReposList } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { Card } from "./ui";
 import { timeAgo } from "../lib/git";
 
 // Per-repo automatic commits: off by default. Daily / every-2-days / custom
 // weekdays — each at a time you pick — or dynamic (commit soon after changes
-// appear). Committing only; it never pushes.
+// appear). Can be pinned to one branch (defaults to the branch you're on when
+// enabling). Committing only; it never pushes.
+//
+// Every control writes optimistically into the query cache first, so chips,
+// selects and the time field reflect a click instantly — the server save
+// happens in the background and the cache is reconciled afterwards.
 
 type ScheduleKind = "daily" | "alternate" | "custom" | "onChange";
 
@@ -21,6 +26,8 @@ const WEEKDAYS = [
   { d: 0, label: "Sun" },
 ];
 
+type SaveConfig = Pick<AutoCommitConfig, "enabled" | "mode" | "everyHours" | "atTime" | "everyDays" | "days" | "branch">;
+
 export function AutoCommitCard() {
   const { root } = useLocalRepo();
   const qc = useQueryClient();
@@ -33,8 +40,24 @@ export function AutoCommitCard() {
     refetchInterval: 60_000, // pick up lastRun updates from the scheduler
   });
 
+  // Current branch (shares the Status page's cache) + branch list for the picker.
+  const stateQuery = useQuery({
+    queryKey: ["local-state", root],
+    queryFn: () => api.local.getState(),
+    enabled: !!root,
+    staleTime: 15_000,
+  });
+  const branchesQuery = useQuery({
+    queryKey: ["local-branches", root],
+    queryFn: () => api.local.getBranches(),
+    enabled: !!root,
+    staleTime: 60_000,
+  });
+
   const cfg: AutoCommitConfig | undefined = reposQuery.data?.repos.find((r) => r.root === root)?.autoCommit;
   const enabled = !!cfg?.enabled;
+  const currentBranch = stateQuery.data?.branch ?? null;
+  const localBranches = (branchesQuery.data ?? []).filter((b) => !b.isRemote).map((b) => b.name);
 
   // Current selections, derived from the stored config (with legacy mapping).
   const kind: ScheduleKind =
@@ -53,32 +76,60 @@ export function AutoCommitCard() {
           : "daily";
   const atTime = cfg?.atTime ?? "18:00";
   const days = cfg?.days ?? [1, 2, 3, 4, 5];
+  // Branch to pin to: stored choice, else the branch you're on right now.
+  const branchSel = cfg?.enabled ? (cfg.branch ?? "") : (currentBranch ?? "");
 
   const saveM = useMutation({
-    mutationFn: (config: Pick<AutoCommitConfig, "enabled" | "mode" | "everyHours" | "atTime" | "everyDays" | "days">) =>
-      api.local.setAutoCommit(root!, config),
-    onSuccess: () => {
+    mutationFn: (config: SaveConfig) => api.local.setAutoCommit(root!, config),
+    // Optimistic: reflect the change in the cache immediately.
+    onMutate: async (config) => {
       setError(null);
+      await qc.cancelQueries({ queryKey: ["local-repos-config"] });
+      const prev = qc.getQueryData<ReposList>(["local-repos-config"]);
+      qc.setQueryData<ReposList>(["local-repos-config"], (old) =>
+        old
+          ? {
+              ...old,
+              repos: old.repos.map((r) =>
+                r.root === root ? { ...r, autoCommit: { ...r.autoCommit, ...config } } : r
+              ),
+            }
+          : old
+      );
+      return { prev };
+    },
+    onError: (e, _config, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["local-repos-config"], ctx.prev);
+      setError(e instanceof ApiError ? e.message : "Couldn't save.");
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["local-repos-config"] });
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Couldn't save."),
   });
 
-  function save(next: { on?: boolean; kind?: ScheduleKind; atTime?: string; days?: number[] }) {
+  function save(next: { on?: boolean; kind?: ScheduleKind; atTime?: string; days?: number[]; branch?: string }) {
     const on = next.on ?? enabled;
     const k = next.kind ?? kind;
     const t = next.atTime ?? atTime;
     const d = next.days ?? days;
+    const b = next.branch ?? branchSel;
+    const base = { enabled: on, branch: b || undefined };
     if (k === "onChange") {
-      saveM.mutate({ enabled: on, mode: "onChange", everyHours: 24 });
+      saveM.mutate({ ...base, mode: "onChange", everyHours: 24 });
     } else if (k === "custom") {
       if (d.length === 0) {
         setError("Pick at least one weekday.");
         return;
       }
-      saveM.mutate({ enabled: on, mode: "schedule", everyHours: 24, atTime: t, everyDays: 1, days: d });
+      saveM.mutate({ ...base, mode: "schedule", everyHours: 24, atTime: t, everyDays: 1, days: d });
     } else {
-      saveM.mutate({ enabled: on, mode: "schedule", everyHours: k === "alternate" ? 48 : 24, atTime: t, everyDays: k === "alternate" ? 2 : 1 });
+      saveM.mutate({
+        ...base,
+        mode: "schedule",
+        everyHours: k === "alternate" ? 48 : 24,
+        atTime: t,
+        everyDays: k === "alternate" ? 2 : 1,
+      });
     }
   }
 
@@ -101,7 +152,6 @@ export function AutoCommitCard() {
           {enabled && (
             <select
               value={kind}
-              disabled={saveM.isPending}
               onChange={(e) => save({ kind: e.target.value as ScheduleKind })}
               className="rounded-lg border border-line bg-card px-2 py-1.5 text-sm text-ink focus-visible:border-accent"
             >
@@ -114,7 +164,6 @@ export function AutoCommitCard() {
           <button
             role="switch"
             aria-checked={enabled}
-            disabled={saveM.isPending}
             onClick={() => save({ on: !enabled })}
             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${enabled ? "bg-accent" : "bg-line"}`}
             title={enabled ? "Disable auto-commit" : "Enable auto-commit"}
@@ -128,27 +177,45 @@ export function AutoCommitCard() {
         </div>
       </div>
 
-      {/* Time + custom-days controls for scheduled kinds */}
-      {enabled && kind !== "onChange" && (
+      {/* Branch + time + custom-days controls */}
+      {enabled && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-3">
           <label className="flex items-center gap-2 text-xs font-medium text-muted">
-            Commit at
-            <input
-              type="time"
-              value={atTime}
-              disabled={saveM.isPending}
-              onChange={(e) => e.target.value && save({ atTime: e.target.value })}
-              className="rounded-lg border border-line bg-card px-2 py-1 text-sm text-ink focus-visible:border-accent"
-            />
-            <span className="font-normal">(your local time)</span>
+            On branch
+            <select
+              value={branchSel}
+              onChange={(e) => save({ branch: e.target.value })}
+              title="Auto-commit only runs while this branch is checked out"
+              className="max-w-[160px] truncate rounded-lg border border-line bg-card px-2 py-1 font-mono text-xs text-ink focus-visible:border-accent"
+            >
+              <option value="">Any branch</option>
+              {localBranches.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                  {b === currentBranch ? " (current)" : ""}
+                </option>
+              ))}
+              {branchSel && !localBranches.includes(branchSel) && <option value={branchSel}>{branchSel}</option>}
+            </select>
           </label>
+          {kind !== "onChange" && (
+            <label className="flex items-center gap-2 text-xs font-medium text-muted">
+              Commit at
+              <input
+                type="time"
+                value={atTime}
+                onChange={(e) => e.target.value && save({ atTime: e.target.value })}
+                className="rounded-lg border border-line bg-card px-2 py-1 text-sm text-ink focus-visible:border-accent"
+              />
+              <span className="font-normal">(local time)</span>
+            </label>
+          )}
           {kind === "custom" && (
             <div className="flex items-center gap-1" role="group" aria-label="Days to auto-commit on">
               {WEEKDAYS.map((w) => (
                 <button
                   key={w.d}
                   onClick={() => toggleDay(w.d)}
-                  disabled={saveM.isPending}
                   aria-pressed={days.includes(w.d)}
                   className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
                     days.includes(w.d) ? "bg-accent text-white" : "bg-paper text-muted hover:text-ink"
@@ -172,7 +239,7 @@ export function AutoCommitCard() {
         <p className="mt-2 border-t border-line pt-2 text-xs text-muted">
           {kind === "onChange"
             ? "Watching — commits shortly after changes appear."
-            : `Scheduled for ${atTime}${kind === "alternate" ? ", every 2 days" : kind === "custom" ? " on the selected days" : " every day"}. Runs while the app (or desktop app) is open.`}
+            : `Scheduled for ${atTime}${kind === "alternate" ? ", every 2 days" : kind === "custom" ? " on the selected days" : " every day"}${branchSel ? ` on ${branchSel}` : ""}. Runs while the app (or desktop app) is open.`}
         </p>
       )}
     </Card>

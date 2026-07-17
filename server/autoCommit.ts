@@ -68,6 +68,19 @@ async function runForRepo(root: string, cfg: AutoCommitConfig): Promise<void> {
     return;
   }
 
+  // Branch guard: the config can pin auto-commit to one branch. On any other
+  // branch we skip — and consume the slot for scheduled modes so this doesn't
+  // re-log every minute for the rest of the day.
+  if (cfg.branch && state.branch !== cfg.branch) {
+    // lastRun is set in every mode so this check doesn't rewrite the store
+    // each minute (onChange re-tries after its normal 5-minute gap).
+    await updateAutoCommit(root, {
+      lastRun: new Date().toISOString(),
+      lastResult: `Skipped (on ${state.branch ?? "?"} — auto-commit is set for ${cfg.branch}) — ${fmtNow()}`,
+    });
+    return;
+  }
+
   const dirty = state.staged.length + state.unstaged.length + state.untracked.length;
   if (dirty === 0) {
     // Scheduled/interval modes: count this as a run so today's slot is done

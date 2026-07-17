@@ -1,6 +1,6 @@
 {
   "name": "git-helper-desktop",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "description": "Desktop shell (Electron) for Git Helper — full local-git experience.",
   "main": "main.cjs",

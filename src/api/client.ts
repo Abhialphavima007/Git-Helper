@@ -272,6 +272,7 @@ export interface AutoCommitConfig {
   atTime?: string; // "HH:mm" — schedule mode
   everyDays?: number; // schedule mode: 1 = daily, 2 = every 2 days
   days?: number[]; // schedule mode: custom weekdays 0=Sun … 6=Sat
+  branch?: string; // only auto-commit while this branch is checked out (unset = any)
   lastRun?: string;
   lastResult?: string;
 }
@@ -568,7 +569,7 @@ export const api = {
 
     setAutoCommit: (
       root: string,
-      config: Pick<AutoCommitConfig, "enabled" | "mode" | "everyHours" | "atTime" | "everyDays" | "days"> | null
+      config: Pick<AutoCommitConfig, "enabled" | "mode" | "everyHours" | "atTime" | "everyDays" | "days" | "branch"> | null
     ) =>
       http<StoredRepo>("/api/local/autocommit", {
         method: "POST",

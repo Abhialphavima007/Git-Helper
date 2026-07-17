@@ -20,6 +20,7 @@ export interface AutoCommitConfig {
   atTime?: string; // schedule mode: "HH:mm" local time to commit at
   everyDays?: number; // schedule mode: 1 = daily, 2 = every 2 days (used when no days list)
   days?: number[]; // schedule mode: custom weekdays, 0=Sun … 6=Sat (overrides everyDays)
+  branch?: string; // only auto-commit while this branch is checked out (unset = any branch)
   lastRun?: string; // ISO timestamp of the last successful auto-commit
   lastResult?: string; // human-readable outcome of the last attempt
 }

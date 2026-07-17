@@ -461,6 +461,12 @@ For the scheduled options, a **"Commit at"** time field appears (your local
 time). If the app wasn't open at that moment, the commit happens the next
 time it's open after the scheduled time that day.
 
+An **"On branch"** picker pins auto-commit to one branch — it defaults to
+the branch you're on when you enable it. If a different branch is checked
+out when the schedule fires, nothing is committed and the card shows
+*"Skipped (on X — auto-commit is set for Y)"*. Choose **Any branch** to
+commit wherever you happen to be working.
+
 Auto-commits are clearly labelled (*"Auto-commit (Git Helper): 3 files —
 2026-07-10 14:00"*), and the card shows the last run's result. Safety rules:
 it **never pushes** (sharing stays your call), and it never touches a repo

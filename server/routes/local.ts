@@ -140,7 +140,8 @@ router.post(
     if (cfg && typeof cfg === "object") {
       const mode = cfg.mode === "onChange" ? "onChange" : cfg.mode === "schedule" ? "schedule" : "interval";
       const everyHours = Math.min(Math.max(Number(cfg.everyHours) || 24, 1), 24 * 14);
-      patch = { enabled: !!cfg.enabled, mode, everyHours };
+      const branch = typeof cfg.branch === "string" && cfg.branch.trim() ? cfg.branch.trim() : undefined;
+      patch = { enabled: !!cfg.enabled, mode, everyHours, branch };
       if (mode === "schedule") {
         const atTime = typeof cfg.atTime === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(cfg.atTime) ? cfg.atTime : "18:00";
         const everyDays = Math.min(Math.max(Number(cfg.everyDays) || 1, 1), 14);
