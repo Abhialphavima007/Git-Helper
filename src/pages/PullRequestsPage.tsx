@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type PullRequestInfo } from "../api/client";
 import { useConnection } from "../context/ConnectionContext";
 import { prStatusVerdict, reviewSummary, timeAgo } from "../lib/git";
-import { Card, ErrorNote, Mono, Spinner, StatusPill } from "../components/ui";
+import { Card, ErrorNote, Mono, SearchInput, Spinner, StatusPill } from "../components/ui";
 
 type Scope = "all" | "mine" | "assigned";
 const STATUSES = ["active", "completed", "abandoned", "all"] as const;
@@ -13,6 +13,7 @@ export function PullRequestsPage() {
   const { selectedRepo, selectedRepoId, me } = useConnection();
   const [status, setStatus] = useState<(typeof STATUSES)[number]>("active");
   const [scope, setScope] = useState<Scope>("all");
+  const [filter, setFilter] = useState("");
 
   const query = useQuery({
     queryKey: ["prs", selectedRepoId, status],
@@ -21,11 +22,22 @@ export function PullRequestsPage() {
   });
 
   const visible = useMemo(() => {
-    const list = query.data ?? [];
-    if (scope === "mine") return list.filter((pr) => pr.createdBy?.id === me?.id);
-    if (scope === "assigned") return list.filter((pr) => pr.reviewers.some((r) => r.id === me?.id));
+    let list = query.data ?? [];
+    if (scope === "mine") list = list.filter((pr) => pr.createdBy?.id === me?.id);
+    if (scope === "assigned") list = list.filter((pr) => pr.reviewers.some((r) => r.id === me?.id));
+    const term = filter.trim().toLowerCase();
+    if (term) {
+      list = list.filter(
+        (pr) =>
+          pr.title.toLowerCase().includes(term) ||
+          String(pr.id).includes(term) ||
+          pr.sourceBranch.toLowerCase().includes(term) ||
+          pr.targetBranch.toLowerCase().includes(term) ||
+          (pr.createdBy?.name ?? "").toLowerCase().includes(term)
+      );
+    }
     return list;
-  }, [query.data, scope, me]);
+  }, [query.data, scope, me, filter]);
 
   if (!selectedRepo) {
     return <Card className="p-8 text-center text-sm text-muted">Select a repository from the sidebar.</Card>;
@@ -63,6 +75,12 @@ export function PullRequestsPage() {
             </option>
           ))}
         </select>
+        <SearchInput
+          value={filter}
+          onChange={setFilter}
+          placeholder="Search title, branch, author, !id…"
+          className="w-full sm:ml-auto sm:w-64"
+        />
       </div>
 
       {query.isLoading && <Spinner label="Loading pull requests…" />}

@@ -1,19 +1,44 @@
 version: 2
 updates:
+  # Web app + server. Minor/patch bumps arrive as ONE grouped PR a week; major
+  # versions (Vite, Tailwind, React Router, Express 5, @types/node, ...) are
+  # deliberate upgrades done by hand, so Dependabot doesn't open PRs for them.
   - package-ecosystem: npm
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Desktop shell: Electron and electron-builder together in one PR. Electron
+  # majors are allowed because that is how its security fixes ship.
   - package-ecosystem: npm
     directory: "/desktop"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 1
+    groups:
+      desktop-tooling:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "electron-builder"
+        update-types: ["version-update:semver-major"]
+
+  # Actions are pinned to commit SHAs; Dependabot bumps the SHA and the
+  # "# vN" comment together. One grouped PR, minor/patch only.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

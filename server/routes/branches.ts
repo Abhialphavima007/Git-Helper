@@ -106,9 +106,11 @@ router.get(
     const c = res.locals.connection as Connection;
     const { repoId } = req.params;
     const branch = typeof req.query.branch === "string" ? req.query.branch : undefined;
-    const top = Math.min(Number(req.query.top) || 15, 50);
+    const top = Math.min(Number(req.query.top) || 15, 100);
+    const skip = Math.max(Number(req.query.skip) || 0, 0);
 
     const query: Record<string, string | number> = { "$top": top };
+    if (skip) query["$skip"] = skip;
     if (branch) {
       query["searchCriteria.itemVersion.version"] = branch;
       query["searchCriteria.itemVersion.versionType"] = "branch";

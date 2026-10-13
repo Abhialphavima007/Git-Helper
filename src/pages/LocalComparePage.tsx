@@ -6,7 +6,7 @@ import { ApiError } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { changeLabel, timeAgo } from "../lib/git";
 import { Card, ChangePill, DiffStat, ErrorNote, Mono, Spinner } from "../components/ui";
-import { DiffLines } from "../components/DiffView";
+import { DiffLines, OpenInWindowButton } from "../components/DiffView";
 
 // GitHub-style "compare branches": pick a base and a branch to compare, see the
 // commits and file changes it introduces, then merge it into the base.
@@ -284,7 +284,14 @@ function FileRow({
         <div className="px-4 pb-3">
           {diffQuery.isLoading && <Spinner />}
           {diffQuery.isError && <ErrorNote error={diffQuery.error} />}
-          {diffQuery.data && <DiffLines diff={diffQuery.data.diff} />}
+          {diffQuery.data && (
+            <>
+              <div className="mb-1 flex justify-end">
+                <OpenInWindowButton target={{ file: file.path, ref: compare, base, against: base }} />
+              </div>
+              <DiffLines diff={diffQuery.data.diff} preview={{ file: file.path, ref: compare, against: base }} />
+            </>
+          )}
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import { PullRequestsPage } from "./pages/PullRequestsPage";
 import { PullRequestDetailPage } from "./pages/PullRequestDetailPage";
 import { ReposPage } from "./pages/ReposPage";
 import { AzureComparePage } from "./pages/AzureComparePage";
+import { AzureHistoryPage } from "./pages/AzureHistoryPage";
 import { OpenRepoPage } from "./pages/OpenRepoPage";
 import { LocalStatusPage } from "./pages/LocalStatusPage";
 import { LocalChangesPage } from "./pages/LocalChangesPage";
@@ -20,6 +21,7 @@ import { LocalGraphPage } from "./pages/LocalGraphPage";
 import { LocalConflictsPage } from "./pages/LocalConflictsPage";
 import { LocalUndoPage } from "./pages/LocalUndoPage";
 import { RecoveryPage } from "./pages/RecoveryPage";
+import { FileDetailPage } from "./pages/FileDetailPage";
 import { Spinner } from "./components/ui";
 
 // Gate the Azure DevOps screens: needs an active connection.
@@ -74,6 +76,7 @@ export default function App() {
       <Route path="/repos" element={<RequireAzure><ReposPage /></RequireAzure>} />
       <Route path="/branches" element={<RequireAzure><BranchesPage /></RequireAzure>} />
       <Route path="/compare" element={<RequireAzure><AzureComparePage /></RequireAzure>} />
+      <Route path="/history" element={<RequireAzure><AzureHistoryPage /></RequireAzure>} />
       <Route path="/pulls" element={<RequireAzure><PullRequestsPage /></RequireAzure>} />
       <Route path="/pulls/:prId" element={<RequireAzure><PullRequestDetailPage /></RequireAzure>} />
 
@@ -103,6 +106,12 @@ export default function App() {
       <Route path="/local/conflicts" element={<RequireLocal><LocalConflictsPage /></RequireLocal>} />
       <Route path="/local/undo" element={<RequireLocal><LocalUndoPage /></RequireLocal>} />
       <Route path="/local/recovery" element={<RequireLocal><RecoveryPage /></RequireLocal>} />
+      <Route path="/azure/file" element={conn.connected ? <FileDetailPage /> : <Navigate to="/" replace />} />
+      {/* Full-page file viewer — its own window, so no sidebar */}
+      <Route
+        path="/local/file"
+        element={!local.localEnabled ? <Navigate to="/" replace /> : !local.open ? <Navigate to="/local/open" replace /> : <FileDetailPage />}
+      />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

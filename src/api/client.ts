@@ -76,6 +76,31 @@ export interface BranchesResult {
   branches: BranchInfo[];
 }
 
+export type AzureChangeKind = "added" | "modified" | "deleted" | "renamed";
+
+export interface AzureCommitDetail {
+  id: string;
+  fullId: string;
+  subject: string;
+  body: string;
+  author: string;
+  authorEmail: string | null;
+  date: string | null;
+  committer: string | null;
+  parents: string[];
+  parentIds: string[];
+  counts: { added: number; modified: number; deleted: number };
+  files: Array<{ path: string; kind: AzureChangeKind; from: string | null }>;
+}
+
+export interface AzureFileDiff {
+  path: string;
+  diff: string;
+  binary: boolean;
+  tooLarge?: boolean;
+  status: "added" | "modified" | "deleted";
+}
+
 export interface ReviewerInfo {
   id: string;
   name: string;
@@ -277,10 +302,17 @@ export interface AutoCommitConfig {
   lastResult?: string;
 }
 
+export interface RepoOrigin {
+  org: string;
+  project: string;
+  repo: string;
+}
+
 export interface StoredRepo {
   root: string;
   name: string;
   addedAt: string;
+  origin?: RepoOrigin | null; // Azure DevOps project it was cloned from (null = not Azure)
   branch?: string | null;
   detached?: boolean;
   stashCount?: number;
@@ -298,6 +330,75 @@ export interface AssistantStatus {
 export interface AssistantChatResult {
   reply: string;
   actions: string[];
+}
+
+export interface SavedConnection {
+  org: string;
+  project: string;
+  user: string | null;
+  lastUsed: string;
+  hasToken: boolean;
+}
+
+export interface FilePreview {
+  file: string;
+  size: number;
+  kind: "image" | "zip" | "text" | "binary";
+  mime?: string;
+  dataUrl?: string;
+  entries?: Array<{ path: string; size: number; compressed: number }>;
+  entryCount?: number;
+  solution?: {
+    uniqueName: string | null;
+    displayName: string | null;
+    version: string | null;
+    publisher: string | null;
+    managed: boolean | null;
+  } | null;
+  lines?: string[];
+  truncated?: boolean;
+  hex?: string;
+  note?: string;
+}
+
+export type ArchiveEntryStatus = "added" | "removed" | "modified" | "same";
+
+export interface ArchiveOverview {
+  file: string;
+  size: number;
+  entries: Array<{ path: string; size: number; compressed: number; status: ArchiveEntryStatus }>;
+  entryCount: number;
+  truncated: boolean;
+  solution: FilePreview["solution"];
+  previous: { path: string; auto: boolean; size: number; solution: FilePreview["solution"] } | null;
+  candidates: string[];
+  changed: { added: number; removed: number; modified: number };
+}
+
+export interface ArchiveSource {
+  ref?: string;
+  staged?: boolean;
+  against?: string; // the ref holding the previous version
+  againstFile?: string; // a different archive at that ref to compare with
+}
+
+export interface ArchiveEntryView {
+  entry: string;
+  status: ArchiveEntryStatus;
+  current: FilePreview | null;
+  previous: FilePreview | null;
+  diff?: string;
+  diffTruncated?: boolean;
+  noDiffReason?: string;
+}
+
+function archiveQuery(file: string, source: ArchiveSource): string {
+  const q = new URLSearchParams({ file });
+  if (source.ref) q.set("ref", source.ref);
+  if (source.staged) q.set("staged", "1");
+  if (source.against) q.set("against", source.against);
+  if (source.againstFile) q.set("againstFile", source.againstFile);
+  return q.toString();
 }
 
 export interface ReposList {
@@ -381,8 +482,13 @@ export const api = {
 
   getConnection: () => http<ConnectionState>("/api/connection"),
 
-  connect: (body: { org: string; project: string; pat: string }) =>
+  connect: (body: { org: string; project: string; pat: string; rememberToken?: boolean; useSavedToken?: boolean }) =>
     http<ConnectResult>("/api/connect", { method: "POST", body: JSON.stringify(body) }),
+
+  // Desktop only: connections used before on this machine.
+  getSavedConnections: () => http<SavedConnection[]>("/api/connections"),
+  forgetConnection: (org: string, project: string) =>
+    http<SavedConnection[]>("/api/connections/forget", { method: "POST", body: JSON.stringify({ org, project }) }),
 
   disconnect: () => http<void>("/api/disconnect", { method: "POST" }),
 
@@ -391,9 +497,21 @@ export const api = {
   getBranches: (repoId: string) =>
     http<BranchesResult>(`/api/repos/${encodeURIComponent(repoId)}/branches`),
 
-  getCommits: (repoId: string, branch: string, top = 12) =>
+  getCommits: (repoId: string, branch: string, top = 12, skip = 0) =>
     http<CommitInfo[]>(
-      `/api/repos/${encodeURIComponent(repoId)}/commits?branch=${encodeURIComponent(branch)}&top=${top}`
+      `/api/repos/${encodeURIComponent(repoId)}/commits?branch=${encodeURIComponent(branch)}&top=${top}${skip ? `&skip=${skip}` : ""}`
+    ),
+
+  // Azure commit details and per-file line diffs (computed server-side).
+  getAzureCommit: (repoId: string, commitId: string) =>
+    http<AzureCommitDetail>(`/api/repos/${encodeURIComponent(repoId)}/commit/${encodeURIComponent(commitId)}`),
+  getAzureCommitDiff: (repoId: string, commitId: string, path: string, from?: string | null) =>
+    http<AzureFileDiff>(
+      `/api/repos/${encodeURIComponent(repoId)}/commit/${encodeURIComponent(commitId)}/diff?path=${encodeURIComponent(path)}${from ? `&from=${encodeURIComponent(from)}` : ""}`
+    ),
+  getAzureFile: (repoId: string, commitId: string, path: string) =>
+    http<{ path: string; binary: boolean; lines: string[] }>(
+      `/api/repos/${encodeURIComponent(repoId)}/commit/${encodeURIComponent(commitId)}/file?path=${encodeURIComponent(path)}`
     ),
 
   getPullRequests: (repoId: string, status: string) =>
@@ -498,6 +616,16 @@ export const api = {
       http<{ id: string; file: string; diff: string }>(
         `/api/local/commit-diff?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`
       ),
+
+    getPreview: (file: string, source: { ref?: string; staged?: boolean }, full = false) =>
+      http<FilePreview>(
+        `/api/local/preview?file=${encodeURIComponent(file)}${source.ref ? `&ref=${encodeURIComponent(source.ref)}` : ""}${source.staged ? "&staged=1" : ""}${full ? "&full=1" : ""}`
+      ),
+
+    getArchive: (file: string, source: ArchiveSource) =>
+      http<ArchiveOverview>(`/api/local/archive?${archiveQuery(file, source)}`),
+    getArchiveEntry: (file: string, entry: string, source: ArchiveSource, full = false) =>
+      http<ArchiveEntryView>(`/api/local/archive-entry?${archiveQuery(file, source)}&entry=${encodeURIComponent(entry)}${full ? "&full=1" : ""}`),
 
     getDiff: (file: string, staged: boolean) =>
       http<{ file: string; staged: boolean; diff: string }>(

@@ -2,7 +2,7 @@ import { Router } from "express";
 import os from "node:os";
 import path from "node:path";
 import type { Connection } from "../azdo";
-import { azureAuthArgs, azureCloneUrl } from "../git";
+import { azureCloneUrl } from "../git";
 import { startClone, getJob } from "../cloneJobs";
 import { asyncRoute, requireConnection } from "../session";
 
@@ -25,8 +25,14 @@ router.post(
       res.status(400).json({ error: "missing_fields", message: "A repository name and a destination folder are required." });
       return;
     }
+    // Azure repo names never contain path separators; refusing them keeps the
+    // clone inside the folder the user picked.
+    if (/[\\/]/.test(repoName) || repoName === "." || repoName === "..") {
+      res.status(400).json({ error: "bad_repo_name", message: "That repository name isn't valid." });
+      return;
+    }
     const url = azureCloneUrl(c.org, c.project, repoName);
-    const job = await startClone({ url, authArgs: azureAuthArgs(c.pat), parentDir, repoName });
+    const job = await startClone({ url, auth: { pat: c.pat }, parentDir, repoName });
     res.json({ jobId: job.id, dest: job.dest });
   })
 );

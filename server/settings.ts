@@ -26,9 +26,12 @@ async function read(): Promise<Settings> {
   }
 }
 
+// The file holds API keys, so keep it readable by the current user only
+// (macOS/Linux; on Windows the profile folder is already per-user).
 async function write(s: Settings): Promise<void> {
-  await fs.mkdir(DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(s, null, 2), "utf8");
+  await fs.mkdir(DIR, { recursive: true, mode: 0o700 });
+  await fs.writeFile(FILE, JSON.stringify(s, null, 2), { encoding: "utf8", mode: 0o600 });
+  await fs.chmod(FILE, 0o600).catch(() => undefined);
 }
 
 export interface AssistantCredentials {

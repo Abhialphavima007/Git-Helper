@@ -5,8 +5,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, type GraphCommit } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { timeAgo } from "../lib/git";
-import { Card, DiffStat, ErrorNote, Mono, Spinner } from "../components/ui";
-import { DiffLines } from "../components/DiffView";
+import { Card, DiffStat, ErrorNote, Mono, SearchInput, Spinner } from "../components/ui";
+import { DiffLines, OpenInWindowButton } from "../components/DiffView";
+import { FolderRow, groupByFolder, matchesFilter } from "../components/FileGroups";
 
 const ROW = 48;
 const COLW = 20;
@@ -108,6 +109,7 @@ export function LocalGraphPage() {
   const [simplify, setSimplify] = useState(false); // --first-parent
   const [limit, setLimit] = useState(80);
   const [selected, setSelected] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
 
   const branchesQuery = useQuery({
     queryKey: ["local-branches", root],
@@ -129,6 +131,14 @@ export function LocalGraphPage() {
     () => (query.data ? layoutGraph(query.data) : { rows: [], cols: 1 }),
     [query.data]
   );
+
+  // A search shows the matching commits as a list — rails only make sense for
+  // the full, unbroken sequence.
+  const searching = filter.trim().length > 0;
+  const listRows = searching
+    ? rows.filter((r) => matchesFilter(filter, r.commit.subject, r.commit.author, r.commit.id, ...r.commit.refs))
+    : rows;
+  const showList = view === "list" || searching;
 
   const graphWidth = cols * COLW + PAD_X * 2;
   const height = Math.max(rows.length * ROW, ROW);
@@ -203,9 +213,21 @@ export function LocalGraphPage() {
           </label>
         )}
 
-        {isAll && (
-          <span className="text-xs text-muted">
+        <SearchInput
+          value={filter}
+          onChange={setFilter}
+          placeholder="Search message, author, id…"
+          className="w-full sm:ml-auto sm:w-64"
+        />
+
+        {isAll && !searching && (
+          <span className="w-full text-xs text-muted">
             Tip: long-diverged branches draw long parallel rails — pick one branch for a cleaner view.
+          </span>
+        )}
+        {searching && (
+          <span className="w-full text-xs text-muted">
+            {listRows.length} of {rows.length} loaded commit{rows.length === 1 ? "" : "s"} match — load more above to search further back.
           </span>
         )}
       </Card>
@@ -217,9 +239,13 @@ export function LocalGraphPage() {
         <Card className="p-8 text-center text-sm text-muted">No commits yet in this repository.</Card>
       )}
 
-      {view === "list" && rows.length > 0 && (
+      {showList && rows.length > 0 && listRows.length === 0 && (
+        <Card className="p-8 text-center text-sm text-muted">No commits match “{filter}”.</Card>
+      )}
+
+      {showList && listRows.length > 0 && (
         <Card className="divide-y divide-line p-0">
-          {rows.map((r) => {
+          {listRows.map((r) => {
             const isSel = selected === r.commit.id;
             return (
               <button
@@ -250,7 +276,7 @@ export function LocalGraphPage() {
         </Card>
       )}
 
-      {view === "graph" && rows.length > 0 && (
+      {!showList && rows.length > 0 && (
         <Card className="overflow-x-auto p-0">
           <div className="flex min-w-[320px]">
             <svg width={graphWidth} height={height} className="shrink-0" role="img" aria-label="Commit graph">
@@ -338,6 +364,15 @@ function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [revertError, setRevertError] = useState<unknown>(null);
   const [reverted, setReverted] = useState(false);
+  // Changed files sit under their folders, closed until opened.
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set());
+  const toggleFolder = (folder: string) =>
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folder)) next.delete(folder);
+      else next.add(folder);
+      return next;
+    });
 
   const query = useQuery({
     queryKey: ["local-commit-detail", root, id],
@@ -477,23 +512,43 @@ function CommitDetail({ id, onClose }: { id: string; onClose: () => void }) {
               </span>
             </div>
             <div className="divide-y divide-line border-t border-line">
-              {d.files.map((f) => {
-                const isOpen = openFile === f.path;
+              {groupByFolder(d.files, (f) => f.path, (f) => f).map((g) => {
+                const folderOpen = g.folder === "" || openFolders.has(g.folder);
                 return (
-                  <div key={f.path}>
-                    <button
-                      onClick={() => setOpenFile(isOpen ? null : f.path)}
-                      className="flex w-full items-center gap-3 px-5 py-2.5 text-left hover:bg-paper"
-                    >
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{f.path}</span>
-                      <DiffStat added={f.added} removed={f.removed} />
-                      <span className="shrink-0 text-muted">{isOpen ? "▾" : "▸"}</span>
-                    </button>
-                    {isOpen && (
-                      <div className="px-5 pb-3">
-                        <CommitFileDiff id={d.id} file={f.path} />
-                      </div>
+                  <div key={g.folder || "(root)"}>
+                    {g.folder !== "" && (
+                      <FolderRow
+                        folder={g.folder}
+                        count={g.items.length}
+                        added={g.added}
+                        removed={g.removed}
+                        open={folderOpen}
+                        onToggle={() => toggleFolder(g.folder)}
+                      />
                     )}
+                    {folderOpen &&
+                      g.items.map((f) => {
+                        const isOpen = openFile === f.path;
+                        return (
+                          <div key={f.path} className={g.folder ? "border-t border-line" : ""}>
+                            <button
+                              onClick={() => setOpenFile(isOpen ? null : f.path)}
+                              className={`flex w-full items-center gap-3 py-2.5 pr-5 text-left hover:bg-paper ${g.folder ? "pl-10" : "pl-5"}`}
+                            >
+                              <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink" title={f.path}>
+                                {g.folder ? f.path.slice(g.folder.length + 1) : f.path}
+                              </span>
+                              <DiffStat added={f.added} removed={f.removed} />
+                              <span className="shrink-0 text-muted">{isOpen ? "▾" : "▸"}</span>
+                            </button>
+                            {isOpen && (
+                              <div className="px-5 pb-3">
+                                <CommitFileDiff id={d.id} file={f.path} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 );
               })}
@@ -514,7 +569,14 @@ function CommitFileDiff({ id, file }: { id: string; file: string }) {
   });
   if (query.isLoading) return <Spinner />;
   if (query.isError) return <ErrorNote error={query.error} />;
-  return <DiffLines diff={query.data?.diff ?? ""} />;
+  return (
+    <div>
+      <div className="mb-1 flex justify-end">
+        <OpenInWindowButton target={{ file, ref: id, against: `${id}^` }} />
+      </div>
+      <DiffLines diff={query.data?.diff ?? ""} preview={{ file, ref: id, against: `${id}^` }} />
+    </div>
+  );
 }
 
 function RefChip({ label }: { label: string }) {

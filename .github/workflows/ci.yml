@@ -22,10 +22,10 @@ jobs:
     name: Typecheck & build (web, serverless, desktop bundle)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
@@ -36,20 +36,25 @@ jobs:
         run: npm run build:vercel
       - name: Build desktop server + MCP bundle
         run: npm run desktop:build
+      - name: Server tests (security, features, Azure, diff)
+        run: node tests/run.cjs
 
   audit:
-    name: Dependency audit (informational)
+    name: Dependency audit
     runs-on: ubuntu-latest
-    # Reports known vulnerabilities without blocking contributors on issues
-    # that live in transitive dev-dependencies. Maintainers watch this job.
-    continue-on-error: true
+    # Production dependencies must be free of high/critical advisories — this
+    # is a real gate. Dev-only tooling is reported but doesn't fail the build
+    # (and doesn't paint the branch red the way continue-on-error did).
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm audit --audit-level=high
+      - name: Production dependencies (blocking)
+        run: npm audit --omit=dev --audit-level=high
+      - name: All dependencies (report only)
+        run: npm audit --audit-level=high || true

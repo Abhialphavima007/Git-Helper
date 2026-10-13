@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request } from "express";
-import { resolveRepo, azureAuthArgs, openInEditor } from "../git";
-import { listRepos, addRepo, setLastOpened, removeRepo, updateAutoCommit } from "../repoStore";
+import { resolveRepo, openInEditor, type GitAuth } from "../git";
+import { listRepos, addRepo, setLastOpened, setOrigin, removeRepo, updateAutoCommit } from "../repoStore";
 import {
   getState,
   getBranches,
@@ -15,6 +15,7 @@ import {
   commit,
   diffFile,
   getRemotes,
+  parseAzureRemote,
   checkoutBranch,
   createBranch,
   mergeBranch,
@@ -44,6 +45,7 @@ import {
   type ResetMode,
 } from "../localGit";
 import { logAction, listActions } from "../actionLog";
+import { previewFile, archiveOverview, archiveEntry } from "../filePreview";
 import { asyncRoute, requireLocalRepo } from "../session";
 
 const router = Router();
@@ -81,6 +83,16 @@ router.get(
     const { repos, lastOpened } = await listRepos();
     const withInfo = await Promise.all(
       repos.map(async (r) => {
+        // Repos registered before origins were recorded: read it once, keep it.
+        if (r.origin === undefined) {
+          try {
+            const remote = (await getRemotes(r.root)).find((x) => x.name === "origin") ?? (await getRemotes(r.root))[0];
+            r.origin = remote ? parseAzureRemote(remote.url) : null;
+            await setOrigin(r.root, r.origin);
+          } catch {
+            /* leave undefined; try again next time */
+          }
+        }
         try {
           const s = await getState(r.root);
           return { ...r, branch: s.branch, detached: s.detached, stashCount: s.stashCount, dirty: !s.clean };
@@ -261,6 +273,82 @@ router.get(
     }
     const staged = req.query.staged === "1" || req.query.staged === "true";
     res.json({ file, staged, diff: await diffFile(res.locals.repoRoot as string, file, staged) });
+  })
+);
+
+// GET /api/local/preview?file=...&ref=<commit>|&staged=1
+// A look inside a file git can't diff as text: image, zip listing, or hex.
+router.get(
+  "/preview",
+  asyncRoute(async (req, res) => {
+    const file = typeof req.query.file === "string" ? req.query.file : "";
+    if (!file) {
+      res.status(400).json({ error: "missing_file", message: "A file is required." });
+      return;
+    }
+    // A commit id, HEAD, or a branch name (the compare page); never an option.
+    const ref = typeof req.query.ref === "string" && req.query.ref ? req.query.ref : undefined;
+    if (ref && (ref.startsWith("-") || /\s/.test(ref))) {
+      res.status(400).json({ error: "bad_ref", message: "That isn't a valid commit or branch." });
+      return;
+    }
+    const staged = req.query.staged === "1" || req.query.staged === "true";
+    const full = req.query.full === "1";
+    res.json(await previewFile(res.locals.repoRoot as string, file, { ref, staged }, full));
+  })
+);
+
+// A ref from the query string: a commit id, HEAD, <sha>^, or a branch name —
+// anything but an option.
+function refParam(value: unknown): string | undefined | null {
+  if (typeof value !== "string" || !value) return undefined;
+  if (value.startsWith("-") || /\s/.test(value)) return null;
+  return value;
+}
+
+// GET /api/local/archive?file=...&ref=&staged=1&against=<ref>
+// Everything inside a zip, each entry marked added / removed / modified
+// against the archive's previous version.
+router.get(
+  "/archive",
+  asyncRoute(async (req, res) => {
+    const file = typeof req.query.file === "string" ? req.query.file : "";
+    const ref = refParam(req.query.ref);
+    const against = refParam(req.query.against);
+    if (!file || ref === null || against === null) {
+      res.status(400).json({ error: "bad_request", message: "A file and valid refs are required." });
+      return;
+    }
+    const staged = req.query.staged === "1" || req.query.staged === "true";
+    const againstFile = typeof req.query.againstFile === "string" && req.query.againstFile ? req.query.againstFile : null;
+    if (againstFile && againstFile.startsWith("-")) {
+      res.status(400).json({ error: "bad_request", message: "That isn't a valid path." });
+      return;
+    }
+    res.json(await archiveOverview(res.locals.repoRoot as string, file, { ref, staged }, against ?? null, againstFile));
+  })
+);
+
+// GET /api/local/archive-entry?file=...&entry=...&ref=&staged=1&against=<ref>
+router.get(
+  "/archive-entry",
+  asyncRoute(async (req, res) => {
+    const file = typeof req.query.file === "string" ? req.query.file : "";
+    const entry = typeof req.query.entry === "string" ? req.query.entry : "";
+    const ref = refParam(req.query.ref);
+    const against = refParam(req.query.against);
+    if (!file || !entry || ref === null || against === null) {
+      res.status(400).json({ error: "bad_request", message: "A file, an entry and valid refs are required." });
+      return;
+    }
+    const staged = req.query.staged === "1" || req.query.staged === "true";
+    const full = req.query.full === "1";
+    const againstFile = typeof req.query.againstFile === "string" && req.query.againstFile ? req.query.againstFile : null;
+    if (againstFile && againstFile.startsWith("-")) {
+      res.status(400).json({ error: "bad_request", message: "That isn't a valid path." });
+      return;
+    }
+    res.json(await archiveEntry(res.locals.repoRoot as string, file, entry, { ref, staged }, against ?? null, full, againstFile));
   })
 );
 
@@ -533,7 +621,7 @@ router.get(
         if (remotes.some((r) => r.isAzure) && !pat) {
           fetchError = "Not connected to Azure DevOps, so the remote wasn't checked — ahead/behind may be stale.";
         } else if (remotes.length > 0) {
-          await fetchRemote(root, pat ? azureAuthArgs(pat) : []);
+          await fetchRemote(root, pat ? { pat } : null);
         }
       } catch (e) {
         fetchError = e instanceof Error ? e.message : "Fetch failed — showing locally-known numbers.";
@@ -710,7 +798,7 @@ router.post(
   "/fetch",
   asyncRoute(async (req, res) => {
     const auth = await authFor(req, res);
-    if (auth === null) return;
+    if (auth === undefined) return;
     res.json(await fetchRemote(res.locals.repoRoot as string, auth));
   })
 );
@@ -720,7 +808,7 @@ router.post(
   "/pull",
   asyncRoute(async (req, res) => {
     const auth = await authFor(req, res);
-    if (auth === null) return;
+    if (auth === undefined) return;
     const root = res.locals.repoRoot as string;
     const result = await pull(root, auth);
     if (result.ok) {
@@ -740,7 +828,7 @@ router.post(
   "/push",
   asyncRoute(async (req, res) => {
     const auth = await authFor(req, res);
-    if (auth === null) return;
+    if (auth === undefined) return;
     const root = res.locals.repoRoot as string;
     const state = await push(root, auth);
     await logAction({
@@ -762,20 +850,21 @@ function requireName(req: Request, res: import("express").Response): string | nu
   return name;
 }
 
-// Build the auth prefix for a network op. Returns [] for public remotes; for an
-// Azure remote with no active connection, refuses with a clear message.
-async function authFor(req: Request, res: import("express").Response): Promise<string[] | null> {
+// Credentials for a network op. Returns null for public remotes; for an Azure
+// remote with no active connection, responds with a clear message and returns
+// undefined. (git only offers the PAT to Azure DevOps hosts — see git.ts.)
+async function authFor(req: Request, res: import("express").Response): Promise<GitAuth | null | undefined> {
   const pat = req.session.connection?.pat;
-  if (pat) return azureAuthArgs(pat);
+  if (pat) return { pat };
   const remotes = await getRemotes(res.locals.repoRoot as string);
   if (remotes.some((r) => r.isAzure)) {
     res.status(409).json({
       error: "not_connected",
       message: "This repo's remote is Azure DevOps. Connect with your organization, project, and PAT first so the app can authenticate.",
     });
-    return null;
+    return undefined;
   }
-  return [];
+  return null;
 }
 
 function asFileList(value: unknown): string[] {

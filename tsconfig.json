@@ -15,5 +15,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["src", "server", "server.ts", "vite.config.ts"]
+  "include": ["src", "server", "server.ts", "vite.config.ts"],
+  "exclude": ["tests"]
 }

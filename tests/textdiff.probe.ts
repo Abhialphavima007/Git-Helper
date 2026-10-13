@@ -1,0 +1,18 @@
+import { unifiedDiff } from "../server/textDiff";
+const a = Array.from({ length: 50 }, (_, i) => `line ${i}`).join("\n");
+const b = a.split("\n").map((l, i) => (i === 10 ? "line 10 changed" : l)).filter((_, i) => i !== 30).concat(["line new"]).join("\n");
+const d = unifiedDiff(a, b)!;
+console.log(d.includes("-line 10\n+line 10 changed") && d.includes("@@ -8,7 +8,7 @@") ? "PASS single change hunk with positions" : "FAIL hunk");
+console.log(d.includes("-line 30") && !d.includes("+line 30") ? "PASS deletion" : "FAIL deletion");
+console.log(d.includes("+line new") ? "PASS append at end" : "FAIL append");
+console.log(unifiedDiff(a, a) === "" ? "PASS identical → empty" : "FAIL identical");
+console.log(unifiedDiff("", "x\ny\n")!.split("\n").filter((l) => l.startsWith("+")).length === 2 ? "PASS new file → all additions" : "FAIL new file");
+console.log(unifiedDiff("a\r\nb\r\n", "a\nb\n") === "" ? "PASS CRLF tolerated" : "FAIL crlf");
+const big = Array.from({ length: 3000 }, (_, i) => `line ${i}`).join("\n");
+const many = big.split("\n").map((l, i) => (i % 7 === 0 ? l + " x" : l)).join("\n");
+const dd = unifiedDiff(big, many)!;
+console.log(dd.split("\n").filter((l) => l.startsWith("+")).length === 429 ? "PASS 429 scattered edits" : "FAIL scattered");
+const huge = Array.from({ length: 50_000 }, (_, i) => `${i}`).join("\n");
+console.log(unifiedDiff(huge, huge + "\nx") === null ? "PASS too large → null" : "FAIL too large");
+const wild = big.split("\n").map((l) => l + " z").join("\n");
+console.log(unifiedDiff(big, wild) === null ? "PASS too different → null (bounded work)" : "FAIL unbounded");

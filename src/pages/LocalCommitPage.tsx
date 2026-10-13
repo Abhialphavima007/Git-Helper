@@ -4,14 +4,16 @@ import { Link } from "react-router-dom";
 import { api, type RepoFile, type RepoState } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { changeLabel } from "../lib/git";
-import { Card, ChangePill, DiffStat, ErrorNote, Mono, Spinner } from "../components/ui";
+import { Card, ChangePill, DiffStat, ErrorNote, Mono, SearchInput, Spinner } from "../components/ui";
 import { DiffView } from "../components/DiffView";
+import { FolderRow, groupByFolder, matchesFilter } from "../components/FileGroups";
 
 export function LocalCommitPage() {
   const { root } = useLocalRepo();
   const qc = useQueryClient();
   const [message, setMessage] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
   const [actionError, setActionError] = useState<unknown>(null);
   const [justCommitted, setJustCommitted] = useState<{ id: string; subject: string } | null>(null);
 
@@ -100,13 +102,20 @@ export function LocalCommitPage() {
       )}
 
       {s && (
-        <>
+        // Files on the left, the commit box pinned on the right (and first on
+        // small screens) so it stays reachable however many files are staged.
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+         <div className="min-w-0 space-y-6">
+          {s.staged.length + s.unstaged.length + s.untracked.length > 0 && (
+            <SearchInput value={filter} onChange={setFilter} placeholder="Search files…" className="w-full sm:w-72" />
+          )}
           {/* Staged */}
           <FileSection
             title="Staged — will be committed"
             files={s.staged}
             empty="Nothing staged yet. Stage changes below to include them in your commit."
             staged
+            filter={filter}
             expanded={expanded}
             setExpanded={setExpanded}
             busy={busy}
@@ -122,6 +131,7 @@ export function LocalCommitPage() {
             files={[...s.unstaged, ...s.untracked]}
             empty="No unstaged changes."
             staged={false}
+            filter={filter}
             expanded={expanded}
             setExpanded={setExpanded}
             busy={busy}
@@ -148,7 +158,9 @@ export function LocalCommitPage() {
               </p>
             </Card>
           )}
+         </div>
 
+         <div className="order-first space-y-4 lg:order-none lg:sticky lg:top-20">
           {/* Commit box */}
           <Card className="p-5">
             <h2 className="font-display text-sm font-semibold text-ink">
@@ -160,7 +172,7 @@ export function LocalCommitPage() {
                 : "A good first line is a short summary in the imperative — “Add login retry”, not “added stuff”. Leave a blank line before any longer explanation."}
             </p>
             <textarea
-              className="mt-3 h-32 w-full resize-y rounded-lg border border-line bg-card px-3 py-2 font-mono text-sm text-ink focus-visible:border-accent"
+              className="mt-3 h-28 w-full resize-y rounded-lg border border-line bg-card px-3 py-2 font-mono text-sm text-ink focus-visible:border-accent"
               placeholder="Summarize the change…"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -176,9 +188,15 @@ export function LocalCommitPage() {
               <button
                 disabled={busy || subjectLen === 0 || (!amendMode && s.staged.length === 0)}
                 onClick={() => commitMutation.mutate(message.trim())}
-                className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
               >
-                {commitMutation.isPending ? (amendMode ? "Amending…" : "Committing…") : amendMode ? "Amend commit" : "Commit"}
+                {commitMutation.isPending
+                  ? amendMode
+                    ? "Amending…"
+                    : "Committing…"
+                  : amendMode
+                    ? "Amend commit"
+                    : `Commit${s.staged.length ? ` ${s.staged.length} file${s.staged.length === 1 ? "" : "s"}` : ""}`}
               </button>
               {canRewrite && (
                 <label className="flex items-center gap-1.5 text-xs text-muted">
@@ -202,9 +220,9 @@ export function LocalCommitPage() {
           {/* Last commit: undo (soft) while it hasn't been pushed */}
           {s.headCommit && (
             <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted">Last commit</p>
-                <p className="truncate text-sm text-ink">
+                <p className="truncate text-sm text-ink" title={s.headCommit.subject}>
                   <Mono>{s.headCommit.id}</Mono> {s.headCommit.subject}
                 </p>
               </div>
@@ -226,7 +244,8 @@ export function LocalCommitPage() {
               </button>
             </Card>
           )}
-        </>
+         </div>
+        </div>
       )}
     </div>
   );
@@ -237,6 +256,7 @@ function FileSection({
   files,
   empty,
   staged,
+  filter,
   expanded,
   setExpanded,
   busy,
@@ -249,6 +269,7 @@ function FileSection({
   files: RepoFile[];
   empty: string;
   staged: boolean;
+  filter: string;
   expanded: string | null;
   setExpanded: (v: string | null) => void;
   busy: boolean;
@@ -258,6 +279,18 @@ function FileSection({
   actionAllLabel?: string;
 }) {
   const key = (f: RepoFile) => `${staged ? "s" : "u"}:${f.path}`;
+  // Files sit under their folder, closed until opened (or until a search hits).
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set());
+  const toggleFolder = (folder: string) =>
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folder)) next.delete(folder);
+      else next.add(folder);
+      return next;
+    });
+  const searching = filter.trim().length > 0;
+  const shown = files.filter((f) => matchesFilter(filter, f.path));
+  const groups = groupByFolder(shown, (f) => f.path, (f) => f);
   return (
     <Card className="p-4">
       <div className="mb-2 flex items-center justify-between">
@@ -276,43 +309,75 @@ function FileSection({
       </div>
       {files.length === 0 ? (
         <p className="text-sm text-muted">{empty}</p>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-muted">No files here match “{filter}”.</p>
       ) : (
-        <ul className="divide-y divide-line">
-          {files.map((f) => {
-            const cl = changeLabel(f.change);
-            const isOpen = expanded === key(f);
+        <div className="-mx-4 divide-y divide-line border-t border-line">
+          {groups.map((g) => {
+            const folderOpen = g.folder === "" || searching || openFolders.has(g.folder);
             return (
-              <li key={key(f)} className="py-2">
-                <div className="flex items-center gap-2">
-                  <ChangePill light={cl.light}>{cl.text}</ChangePill>
-                  <button
-                    onClick={() => setExpanded(isOpen ? null : key(f))}
-                    className="min-w-0 flex-1 truncate text-left font-mono text-xs text-ink hover:text-accent"
-                    title="Show diff"
+              <div key={g.folder || "(root)"}>
+                {g.folder !== "" && (
+                  <FolderRow
+                    folder={g.folder}
+                    count={g.items.length}
+                    added={g.added}
+                    removed={g.removed}
+                    open={folderOpen}
+                    onToggle={() => toggleFolder(g.folder)}
                   >
-                    {f.path}
-                  </button>
-                  <DiffStat added={f.added} removed={f.removed} />
-                  <button
-                    disabled={busy}
-                    onClick={() => onAction([f.path])}
-                    className="rounded-md border border-line px-2 py-0.5 text-xs font-medium text-ink hover:bg-paper disabled:opacity-50"
-                  >
-                    {actionLabel}
-                  </button>
-                </div>
-                {isOpen && f.change !== "untracked" && (
-                  <div className="mt-2">
-                    <DiffView file={f.path} staged={staged} />
-                  </div>
+                    <span
+                      role="button"
+                      aria-disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!busy) onAction(g.items.map((f) => f.path));
+                      }}
+                      className="ml-1 rounded-md border border-line px-2 py-0.5 text-xs font-medium text-ink hover:bg-card"
+                    >
+                      {actionLabel} folder
+                    </span>
+                  </FolderRow>
                 )}
-                {isOpen && f.change === "untracked" && (
-                  <p className="mt-2 p-3 text-xs text-muted">New file — not yet tracked, so there's no diff to show.</p>
+                {folderOpen && (
+                  <ul className={`divide-y divide-line ${g.folder ? "border-t border-line" : ""}`}>
+                    {g.items.map((f) => {
+                      const cl = changeLabel(f.change);
+                      const isOpen = expanded === key(f);
+                      return (
+                        <li key={key(f)} className={`py-2 pr-4 ${g.folder ? "pl-9" : "pl-4"}`}>
+                          <div className="flex items-center gap-2">
+                            <ChangePill light={cl.light}>{cl.text}</ChangePill>
+                            <button
+                              onClick={() => setExpanded(isOpen ? null : key(f))}
+                              className="min-w-0 flex-1 truncate text-left font-mono text-xs text-ink hover:text-accent"
+                              title={f.path}
+                            >
+                              {g.folder ? f.path.slice(g.folder.length + 1) : f.path}
+                            </button>
+                            <DiffStat added={f.added} removed={f.removed} />
+                            <button
+                              disabled={busy}
+                              onClick={() => onAction([f.path])}
+                              className="rounded-md border border-line px-2 py-0.5 text-xs font-medium text-ink hover:bg-paper disabled:opacity-50"
+                            >
+                              {actionLabel}
+                            </button>
+                          </div>
+                          {isOpen && (
+                            <div className="mt-2">
+                              <DiffView file={f.path} staged={staged} />
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
     </Card>
   );

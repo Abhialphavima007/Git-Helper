@@ -151,6 +151,13 @@ function quitClaudeDesktop(): Promise<void> {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// The config (and its backup) can hold the Azure PAT, so make it readable by
+// the current user only on macOS/Linux. Windows already keeps %APPDATA% per-user.
+async function restrictToOwner(file: string): Promise<void> {
+  if (process.platform === "win32") return;
+  await fs.chmod(file, 0o600).catch(() => undefined);
+}
+
 // The bundled MCP server ships next to the desktop server; in dev it lives in
 // the repo's mcp/ folder.
 function findBundle(): string | null {
@@ -218,6 +225,7 @@ export async function connectClaudeDesktop(
     let config: Record<string, unknown> = {};
     if (existsSync(target)) {
       await fs.copyFile(target, target + ".backup");
+      await restrictToOwner(target + ".backup");
       try {
         config = JSON.parse(await fs.readFile(target, "utf8"));
       } catch {
@@ -244,6 +252,7 @@ export async function connectClaudeDesktop(
     config.mcpServers = servers;
 
     await fs.writeFile(target, JSON.stringify(config, null, 2), "utf8");
+    if (env.AZDO_PAT) await restrictToOwner(target);
     azureIncluded = azureIncluded || !!env.AZDO_PAT;
   }
 
@@ -279,6 +288,7 @@ export async function disconnectClaudeDesktop(): Promise<ConnectResult> {
   for (const target of configPaths()) {
     if (!existsSync(target)) continue;
     await fs.copyFile(target, target + ".backup");
+    await restrictToOwner(target + ".backup");
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(await fs.readFile(target, "utf8"));

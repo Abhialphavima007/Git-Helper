@@ -3,29 +3,42 @@ import { Link } from "react-router-dom";
 import { type RepoInfo } from "../api/client";
 import { useConnection } from "../context/ConnectionContext";
 import { useLocalRepo } from "../context/LocalRepoContext";
-import { Card, Mono } from "../components/ui";
+import { Card, Mono, SearchInput } from "../components/ui";
 import { CloneModal } from "../components/CloneModal";
 
 export function ReposPage() {
   const { repos, project, selectRepo } = useConnection();
   const { localEnabled } = useLocalRepo();
   const [cloning, setCloning] = useState<RepoInfo | null>(null);
+  const [filter, setFilter] = useState("");
+  const term = filter.trim().toLowerCase();
+  const shown = term ? repos.filter((r) => r.name.toLowerCase().includes(term)) : repos;
 
   return (
     <div className="space-y-6">
-      <header>
-        <p className="font-mono text-xs uppercase tracking-widest text-muted">Repositories</p>
-        <h1 className="mt-1 font-display text-2xl font-bold text-ink">{project}</h1>
-        <p className="mt-1 text-sm text-muted">
-          {repos.length} repositor{repos.length === 1 ? "y" : "ies"} the token can read.{" "}
-          {localEnabled
-            ? "Clone one to work on it locally, or browse it remotely."
-            : "Browse them here. Cloning to your machine is available in the desktop / local app."}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="font-mono text-xs uppercase tracking-widest text-muted">Repositories</p>
+          <h1 className="mt-1 font-display text-2xl font-bold text-ink">{project}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {repos.length} repositor{repos.length === 1 ? "y" : "ies"} the token can read.{" "}
+            {localEnabled
+              ? "Clone one to work on it locally, or browse it remotely."
+              : "Browse them here. Cloning to your machine is available in the desktop / local app."}
+          </p>
+        </div>
+        {repos.length > 0 && (
+          <SearchInput value={filter} onChange={setFilter} placeholder="Search repositories…" className="w-full sm:w-64" />
+        )}
       </header>
 
       <div className="space-y-2">
-        {repos.map((r) => (
+        {term && (
+          <p className="text-xs text-muted">
+            {shown.length} of {repos.length} match
+          </p>
+        )}
+        {shown.map((r) => (
           <Card key={r.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="truncate font-display text-sm font-semibold text-ink">{r.name}</p>
@@ -62,6 +75,9 @@ export function ReposPage() {
         ))}
         {repos.length === 0 && (
           <Card className="p-8 text-center text-sm text-muted">No repositories available for this token.</Card>
+        )}
+        {repos.length > 0 && shown.length === 0 && (
+          <Card className="p-8 text-center text-sm text-muted">No repository matches “{filter}”.</Card>
         )}
       </div>
 

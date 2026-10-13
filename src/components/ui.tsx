@@ -61,15 +61,20 @@ export function ErrorNote({ error, hint }: { error: unknown; hint?: string }) {
   const message = error instanceof Error ? error.message : "Something went wrong.";
   const detail = error instanceof ApiError ? error.detail : undefined;
 
+  // 409 / 422 come from this app and local git, not from Azure DevOps.
   const explanation =
     hint ||
-    (status === 401
+    (status === 409
+      ? "This needs something set up first — see the message below."
+      : status === 422
+      ? "Git couldn't complete that. The original message is shown below."
+      : status === 401
       ? "Your session ended or the token is no longer valid. Connect again."
       : status === 403
       ? "The token doesn't have permission for this. It needs at least Code (Read) access."
       : status === 404
       ? "Azure DevOps couldn't find that — check the organization, project, or repository name."
-      : "Azure DevOps returned an error. The original message is shown below.");
+      : "Something went wrong. The original message is shown below.");
 
   return (
     <div className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-3">
@@ -79,6 +84,57 @@ export function ErrorNote({ error, hint }: { error: unknown; hint?: string }) {
         {message}
         {detail ? ` — ${detail}` : ""}
       </p>
+    </div>
+  );
+}
+
+// A small search box used by the list pages (repos, branches, files, history).
+export function SearchInput({
+  value,
+  onChange,
+  placeholder = "Search…",
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`relative ${className}`}>
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+        aria-hidden
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+      </svg>
+      <input
+        type="search"
+        className="w-full rounded-lg border border-line bg-card py-1.5 pl-8 pr-7 text-sm text-ink placeholder:text-muted/70 focus-visible:border-accent"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Clear search"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted hover:text-ink"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

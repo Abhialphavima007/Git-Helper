@@ -1,9 +1,10 @@
 // In-memory registry of clone operations. A clone can take a while, so the
 // route starts it, returns a job id immediately, and the UI polls for progress.
 
+import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { runGitStream } from "./git";
+import { runGitStream, type GitAuth } from "./git";
 
 export interface CloneJob {
   id: string;
@@ -17,7 +18,14 @@ export interface CloneJob {
 }
 
 const jobs = new Map<string, CloneJob>();
-let counter = 0;
+
+// Finished jobs stay pollable for a while, then are dropped so the map can't
+// grow for the lifetime of the app.
+const FINISHED_JOB_TTL_MS = 60 * 60 * 1000;
+
+function expireLater(id: string): void {
+  setTimeout(() => jobs.delete(id), FINISHED_JOB_TTL_MS).unref();
+}
 
 export function getJob(id: string): CloneJob | undefined {
   return jobs.get(id);
@@ -35,7 +43,7 @@ function parseProgress(job: CloneJob, line: string): void {
 
 export async function startClone(opts: {
   url: string;
-  authArgs: string[];
+  auth: GitAuth | null;
   parentDir: string;
   repoName: string;
 }): Promise<CloneJob> {
@@ -54,7 +62,7 @@ export async function startClone(opts: {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
 
-  const id = `clone_${++counter}_${Date.now()}`;
+  const id = `clone_${crypto.randomUUID()}`;
   const job: CloneJob = {
     id,
     repoName: opts.repoName,
@@ -66,10 +74,10 @@ export async function startClone(opts: {
   };
   jobs.set(id, job);
 
-  const args = [...opts.authArgs, "clone", "--progress", opts.url, dest];
+  const args = ["clone", "--progress", opts.url, dest];
 
   // Fire and forget; the UI polls getJob(id).
-  runGitStream(parent, args, (line) => parseProgress(job, line))
+  runGitStream(parent, args, (line) => parseProgress(job, line), opts.auth)
     .then(() => {
       job.status = "done";
       job.phase = "Done";
@@ -80,7 +88,8 @@ export async function startClone(opts: {
       job.status = "error";
       job.error = err instanceof Error ? err.message : "Clone failed.";
       job.message = job.error;
-    });
+    })
+    .finally(() => expireLater(id));
 
   return job;
 }

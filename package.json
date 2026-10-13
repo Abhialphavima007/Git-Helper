@@ -13,6 +13,8 @@
     "preview": "vite preview",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",
+    "test": "npm run desktop:build && node tests/run.cjs",
+    "test:quick": "node tests/run.cjs",
     "mcp:build": "node scripts/build-mcp.mjs",
     "mcp:install": "node scripts/build-mcp.mjs && node scripts/install-mcp.mjs"
   },

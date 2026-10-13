@@ -81,14 +81,18 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
+// Azure DevOps Services by default; AZDO_BASE_URL points at an Azure DevOps
+// Server (on-premises) collection URL instead, e.g. https://tfs.corp.local/tfs.
+const AZDO_BASE = (process.env.AZDO_BASE_URL || "https://dev.azure.com").replace(/\/+$/, "");
+
 // Project-scoped Git API base: .../{org}/{project}/_apis/git
 function gitBase(c: Connection): string {
-  return `https://dev.azure.com/${encodeURIComponent(c.org)}/${encodeURIComponent(c.project)}/_apis/git`;
+  return `${AZDO_BASE}/${encodeURIComponent(c.org)}/${encodeURIComponent(c.project)}/_apis/git`;
 }
 
 // Org-scoped base: .../{org}/_apis
 function orgBase(c: Connection): string {
-  return `https://dev.azure.com/${encodeURIComponent(c.org)}/_apis`;
+  return `${AZDO_BASE}/${encodeURIComponent(c.org)}/_apis`;
 }
 
 // Default to GA "7.1". Pass a preview string (e.g. "7.1-preview") for

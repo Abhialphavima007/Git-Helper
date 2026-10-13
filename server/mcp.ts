@@ -33,7 +33,6 @@ import {
   pull,
   push,
 } from "./localGit";
-import { azureAuthArgs } from "./git";
 import type { Connection, GitBranchStat, GitRepository, ListResponse, PullRequest } from "./azdo";
 import { gitGet, gitPost } from "./azdo";
 import { mapPullRequest } from "./util";
@@ -220,7 +219,7 @@ server.registerTool(
   { description: "Fetch the latest refs from the remote (changes nothing locally).", inputSchema: { repo: repoParam } },
   async ({ repo }) => {
     const { root } = await resolveRepoRoot(repo);
-    const s = await fetchRemote(root, azure ? azureAuthArgs(azure.pat) : []);
+    const s = await fetchRemote(root, azure ? { pat: azure.pat } : null);
     return ok({ ahead: s.ahead, behind: s.behind });
   }
 );
@@ -230,7 +229,7 @@ server.registerTool(
   { description: "Pull the upstream's commits into the current branch.", inputSchema: { repo: repoParam } },
   async ({ repo }) => {
     const { root } = await resolveRepoRoot(repo);
-    const r = await pull(root, azure ? azureAuthArgs(azure.pat) : []);
+    const r = await pull(root, azure ? { pat: azure.pat } : null);
     return ok({ ok: r.ok, conflicts: r.conflicts });
   }
 );
@@ -240,7 +239,7 @@ server.registerTool(
   { description: "Push the current branch's commits to the remote (publishes a new branch automatically).", inputSchema: { repo: repoParam } },
   async ({ repo }) => {
     const { root } = await resolveRepoRoot(repo);
-    const s = await push(root, azure ? azureAuthArgs(azure.pat) : []);
+    const s = await push(root, azure ? { pat: azure.pat } : null);
     return ok({ ok: true, ahead: s.ahead, upstream: s.upstream });
   }
 );

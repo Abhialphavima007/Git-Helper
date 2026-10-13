@@ -3,12 +3,14 @@ import type { Request, Response, NextFunction } from "express";
 import connectRoutes from "./routes/connect";
 import branchRoutes from "./routes/branches";
 import pullRequestRoutes from "./routes/pullRequests";
+import commitRoutes from "./routes/commits";
 import localRoutes from "./routes/local";
 import cloneRoutes from "./routes/clone";
 import fsRoutes from "./routes/fs";
 import assistantRoutes from "./routes/assistant";
 import { errorHandler } from "./session";
 import { cookieSession } from "./cookieSession";
+import { requestGuard } from "./requestGuard";
 import { IS_HOSTED } from "./env";
 import { startAutoCommitScheduler } from "./autoCommit";
 
@@ -20,11 +22,15 @@ export { IS_HOSTED };
 //   - prod (node): mounted in server.ts alongside the static build
 //   - serverless: exported as a Vercel function (see api/[...path].ts)
 // The PAT lives only in an encrypted session cookie, never readable by the browser.
+// Largest JSON body accepted. Conflict resolution posts whole files, so the
+// local limit is generous; hosted functions can't take more than this anyway.
+const MAX_BODY_BYTES = IS_HOSTED ? 5 * 1024 * 1024 : 50 * 1024 * 1024;
+
 // Resilient JSON body parser. Works both when the runtime already parsed the
 // body into req.body (some serverless platforms) and when we get a raw stream
 // (dev / standalone Node). Avoids the empty-POST-body pitfall on Vercel.
 function jsonBody() {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     const anyReq = req as unknown as { body?: unknown };
     if (anyReq.body !== undefined && anyReq.body !== null) {
       if (typeof anyReq.body === "string") {
@@ -41,10 +47,21 @@ function jsonBody() {
       return next();
     }
     let data = "";
-    req.on("data", (c) => {
+    let size = 0;
+    let tooLarge = false;
+    req.on("data", (c: Buffer) => {
+      if (tooLarge) return;
+      size += c.length;
+      if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
+        data = "";
+        res.status(413).json({ error: "payload_too_large", message: "That request is too large." });
+        return;
+      }
       data += c;
     });
     req.on("end", () => {
+      if (tooLarge) return;
       try {
         anyReq.body = data ? JSON.parse(data) : {};
       } catch {
@@ -61,6 +78,7 @@ function jsonBody() {
 
 export function createApiApp() {
   const app = express();
+  app.use("/api", requestGuard());
   app.use(jsonBody());
   app.use(cookieSession());
 
@@ -75,6 +93,7 @@ export function createApiApp() {
   // Repo-scoped resources
   app.use("/api/repos/:repoId", branchRoutes);
   app.use("/api/repos/:repoId/pullrequests", pullRequestRoutes);
+  app.use("/api/repos/:repoId/commit", commitRoutes); // commit details + per-file line diffs
 
   // Desktop-only local-git features — omitted on hosted deployments.
   if (!IS_HOSTED) {

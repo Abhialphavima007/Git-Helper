@@ -5,7 +5,7 @@ import { api, type LocalBranch } from "../api/client";
 import { ApiError } from "../api/client";
 import { useLocalRepo } from "../context/LocalRepoContext";
 import { timeAgo } from "../lib/git";
-import { Card, ErrorNote, Mono, Spinner } from "../components/ui";
+import { Card, ErrorNote, Mono, SearchInput, Spinner } from "../components/ui";
 
 export function LocalBranchesPage() {
   const { root } = useLocalRepo();
@@ -14,6 +14,7 @@ export function LocalBranchesPage() {
   const [newName, setNewName] = useState("");
   const [note, setNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
 
   const branchesQuery = useQuery({
     queryKey: ["local-branches", root],
@@ -77,6 +78,8 @@ export function LocalBranchesPage() {
   const busy = checkoutM.isPending || createM.isPending || mergeM.isPending || deleteM.isPending;
   const branches = branchesQuery.data ?? [];
   const current = branches.find((b) => b.current);
+  const term = filter.trim().toLowerCase();
+  const shown = term ? branches.filter((b) => b.name.toLowerCase().includes(term)) : branches;
 
   return (
     <div className="space-y-6">
@@ -115,8 +118,21 @@ export function LocalBranchesPage() {
       {branchesQuery.isLoading && <Spinner label="Loading branches…" />}
       {branchesQuery.isError && <ErrorNote error={branchesQuery.error} />}
 
+      {branches.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <SearchInput value={filter} onChange={setFilter} placeholder="Search branches…" className="w-full sm:w-72" />
+          <span className="text-xs text-muted">
+            {term ? `${shown.length} of ${branches.length}` : branches.length} branch{branches.length === 1 ? "" : "es"}
+          </span>
+        </div>
+      )}
+
+      {branches.length > 0 && shown.length === 0 && (
+        <Card className="p-8 text-center text-sm text-muted">No branch matches “{filter}”.</Card>
+      )}
+
       <div className="space-y-2">
-        {branches.map((b) => (
+        {shown.map((b) => (
           <BranchRow
             key={b.name}
             branch={b}

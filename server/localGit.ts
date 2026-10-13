@@ -4,10 +4,33 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { runGit } from "./git";
+import { runGit, GitError, type GitAuth } from "./git";
 
 // Network ops (fetch/pull/push) can take longer than local plumbing.
 const NETWORK_TIMEOUT = 120_000;
+
+// Branch names, refs and commit ids arrive from the UI, the assistant and MCP
+// clients. One that starts with "-" would be read by git as an option (for
+// example "--output=<file>"), so refuse it before it reaches the command line.
+// Real refs can never start with "-", so nothing legitimate is rejected.
+function assertRef(value: string, what = "branch or ref"): void {
+  if (value.startsWith("-")) {
+    throw new GitError(`That isn't a valid ${what}: ${value}`, null, "");
+  }
+}
+
+// Resolve a repo-relative path and refuse anything that lands outside the work
+// tree — "../" segments, absolute paths, or a sibling folder that merely shares
+// the repo's name as a prefix (C:\repo vs C:\repo-secrets).
+export function pathInRepo(root: string, file: string): string {
+  const base = path.resolve(root);
+  const abs = path.resolve(base, file);
+  const rel = path.relative(base, abs);
+  if (!rel || rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) {
+    throw new GitError(`That path is outside the repository: ${file}`, null, "");
+  }
+  return abs;
+}
 
 const UNIT = "\x1f"; // field separator inside a record
 const REC = "\x1e"; // record separator between commits
@@ -160,7 +183,9 @@ async function numstat(root: string, staged: boolean): Promise<Map<string, { add
 }
 
 export async function getState(root: string): Promise<RepoState> {
-  const raw = await runGit(root, ["status", "--porcelain=v1", "-z", "--branch"]);
+  // --untracked-files=all lists every new file instead of collapsing a new
+  // folder into "folder/", so each file can be staged and diffed on its own.
+  const raw = await runGit(root, ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"]);
   const parsed = parseStatus(raw);
 
   // Attach +/- line counts so the UI can show a GitHub-style summary.
@@ -318,7 +343,10 @@ export async function getGraph(
   const fmt = ["%H", "%h", "%P", "%an", "%aI", "%s", "%D"].join(UNIT) + REC;
   const args = ["log", `--pretty=format:${fmt}`, `-n`, String(limit)];
   if (all) args.push("--all");
-  else if (ref) args.push(ref);
+  else if (ref) {
+    assertRef(ref);
+    args.push(ref);
+  }
   // "Simplify merges": follow only each merge's first parent — the story of
   // the branch without the merged-in side branches.
   if (!all && firstParent) args.push("--first-parent");
@@ -368,6 +396,7 @@ export interface CommitDetail {
 }
 
 export async function getCommitDetail(root: string, sha: string): Promise<CommitDetail> {
+  assertRef(sha, "commit id");
   const fmt = ["%H", "%h", "%an", "%ae", "%aI", "%s", "%b", "%D", "%p"].join(UNIT);
   const metaRaw = await runGit(root, ["show", "--no-patch", `--pretty=format:${fmt}`, sha]);
   const [full, id, author, email, date, subject, body, decoration, parents] = metaRaw.split(UNIT);
@@ -410,6 +439,7 @@ export async function getCommitDetail(root: string, sha: string): Promise<Commit
 
 // Diff of one file within a commit (vs its first parent).
 export async function commitFileDiff(root: string, sha: string, file: string): Promise<string> {
+  assertRef(sha, "commit id");
   return runGit(root, ["show", "--no-color", "--format=", sha, "--", file]);
 }
 
@@ -468,9 +498,10 @@ export async function getConflict(root: string, file: string): Promise<ConflictC
     showStage(root, 2, file),
     showStage(root, 3, file),
   ]);
+  const target = pathInRepo(root, file);
   let merged = "";
   try {
-    merged = await fs.readFile(path.join(root, file), "utf8");
+    merged = await fs.readFile(target, "utf8");
   } catch {
     merged = "";
   }
@@ -479,7 +510,7 @@ export async function getConflict(root: string, file: string): Promise<ConflictC
 
 // Write resolved content for a file and stage it.
 export async function resolveConflict(root: string, file: string, content: string): Promise<void> {
-  const target = path.join(root, file);
+  const target = pathInRepo(root, file);
   await fs.writeFile(target, content, "utf8");
   await runGit(root, ["add", "--", file]);
 }
@@ -533,8 +564,12 @@ export async function diffFile(root: string, file: string, staged: boolean): Pro
 const MAX_UNTRACKED_DIFF_LINES = 5000;
 
 async function untrackedFileDiff(root: string, file: string): Promise<string> {
-  const abs = path.resolve(root, file);
-  if (!abs.startsWith(path.resolve(root))) return ""; // never read outside the repo
+  let abs: string;
+  try {
+    abs = pathInRepo(root, file);
+  } catch {
+    return ""; // never read outside the repo
+  }
   let buf: Buffer;
   try {
     buf = await fs.readFile(abs);
@@ -587,6 +622,7 @@ export async function stashSave(root: string, message?: string): Promise<RepoSta
 // Restore a stash. Conflicts are reported, not thrown, so the UI can route to
 // the resolver just like a merge.
 export async function stashPop(root: string, ref?: string): Promise<BranchActionResult> {
+  if (ref) assertRef(ref, "stash reference");
   try {
     await runGit(root, ref ? ["stash", "pop", ref] : ["stash", "pop"]);
   } catch (e) {
@@ -598,6 +634,7 @@ export async function stashPop(root: string, ref?: string): Promise<BranchAction
 }
 
 export async function stashDrop(root: string, ref: string): Promise<RepoState> {
+  assertRef(ref, "stash reference");
   await runGit(root, ["stash", "drop", ref]);
   return getState(root);
 }
@@ -661,6 +698,7 @@ export async function amendCommit(root: string, message: string): Promise<Commit
 // are already pushed. Merge commits are reverted against their first parent.
 // Conflicts are reported, not thrown, so the UI can route to the resolver.
 export async function revertCommit(root: string, hash: string): Promise<BranchActionResult> {
+  assertRef(hash, "commit id");
   const parents = (await runGit(root, ["rev-list", "--parents", "-n", "1", hash])).trim().split(/\s+/);
   const args = ["revert", "--no-edit"];
   if (parents.length > 2) args.push("-m", "1");
@@ -684,6 +722,7 @@ export type ResetMode = "soft" | "mixed" | "hard";
 // already on the upstream — the next push would be rejected, and revert is
 // the right tool for shared history.
 export async function resetToCommit(root: string, hash: string, mode: ResetMode, force = false): Promise<RepoState> {
+  assertRef(hash, "commit id");
   await runGit(root, ["rev-parse", "--verify", `${hash}^{commit}`]);
   if (!force) {
     const state = await getState(root);
@@ -890,6 +929,7 @@ export async function moveCommitsToNewBranch(
   root: string,
   newBranch: string
 ): Promise<{ state: RepoState; prevHead: string }> {
+  assertRef(newBranch, "branch name");
   const state = await getState(root);
   if (!state.upstream || state.ahead === 0) {
     throw Object.assign(new Error("There are no local-only commits to move."), { name: "RecoveryError" });
@@ -915,6 +955,28 @@ export interface Remote {
   isAzure: boolean;
 }
 
+// Pull org / project / repo out of an Azure DevOps remote URL. Handles the
+// three shapes Azure hands out:
+//   https://org@dev.azure.com/org/project/_git/repo
+//   https://org.visualstudio.com/project/_git/repo   (or /DefaultCollection/project/_git/repo)
+//   git@ssh.dev.azure.com:v3/org/project/repo
+export function parseAzureRemote(url: string): { org: string; project: string; repo: string } | null {
+  const dec = (s: string) => {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s;
+    }
+  };
+  let m = /^git@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?$/i.exec(url);
+  if (m) return { org: dec(m[1]), project: dec(m[2]), repo: dec(m[3]) };
+  m = /^https?:\/\/(?:[^@/]+@)?dev\.azure\.com\/([^/]+)\/([^/]+)\/_git\/([^/?#]+?)(?:\.git)?\/?$/i.exec(url);
+  if (m) return { org: dec(m[1]), project: dec(m[2]), repo: dec(m[3]) };
+  m = /^https?:\/\/(?:[^@/]+@)?([^./]+)\.visualstudio\.com\/(?:DefaultCollection\/)?([^/]+)\/_git\/([^/?#]+?)(?:\.git)?\/?$/i.exec(url);
+  if (m) return { org: dec(m[1]), project: dec(m[2]), repo: dec(m[3]) };
+  return null;
+}
+
 export async function getRemotes(root: string): Promise<Remote[]> {
   const raw = await runGit(root, ["remote", "-v"]);
   const seen = new Map<string, Remote>();
@@ -937,11 +999,14 @@ export interface BranchActionResult {
 }
 
 export async function checkoutBranch(root: string, name: string): Promise<RepoState> {
+  assertRef(name, "branch name");
   await runGit(root, ["checkout", name]);
   return getState(root);
 }
 
 export async function createBranch(root: string, name: string, from?: string): Promise<RepoState> {
+  assertRef(name, "branch name");
+  if (from) assertRef(from);
   const args = ["checkout", "-b", name];
   if (from) args.push(from);
   await runGit(root, args);
@@ -950,6 +1015,7 @@ export async function createBranch(root: string, name: string, from?: string): P
 
 // Merge `name` into the current branch. Conflicts are reported, not thrown.
 export async function mergeBranch(root: string, name: string): Promise<BranchActionResult> {
+  assertRef(name, "branch name");
   try {
     await runGit(root, ["merge", "--no-edit", name]);
   } catch (e) {
@@ -962,19 +1028,20 @@ export async function mergeBranch(root: string, name: string): Promise<BranchAct
 }
 
 export async function deleteBranch(root: string, name: string, force: boolean): Promise<void> {
+  assertRef(name, "branch name");
   await runGit(root, ["branch", force ? "-D" : "-d", name]);
 }
 
 // ---- Network operations (auth prefix supplied by the caller) ----
 
-export async function fetchRemote(root: string, auth: string[]): Promise<RepoState> {
-  await runGit(root, [...auth, "fetch", "--all", "--prune"], { timeout: NETWORK_TIMEOUT });
+export async function fetchRemote(root: string, auth: GitAuth | null): Promise<RepoState> {
+  await runGit(root, ["fetch", "--all", "--prune"], { timeout: NETWORK_TIMEOUT, auth });
   return getState(root);
 }
 
-export async function pull(root: string, auth: string[]): Promise<BranchActionResult> {
+export async function pull(root: string, auth: GitAuth | null): Promise<BranchActionResult> {
   try {
-    await runGit(root, [...auth, "pull", "--no-edit"], { timeout: NETWORK_TIMEOUT });
+    await runGit(root, ["pull", "--no-edit"], { timeout: NETWORK_TIMEOUT, auth });
   } catch (e) {
     const state = await getState(root);
     if (state.conflicted.length > 0 || state.merging) return { ok: false, conflicts: true, state };
@@ -984,16 +1051,16 @@ export async function pull(root: string, auth: string[]): Promise<BranchActionRe
   return { ok: true, conflicts: false, state };
 }
 
-export async function push(root: string, auth: string[]): Promise<RepoState> {
+export async function push(root: string, auth: GitAuth | null): Promise<RepoState> {
   const state = await getState(root);
   if (state.detached || !state.branch) {
     throw Object.assign(new Error("You're not on a branch, so there's nothing to push."), { name: "PushError" });
   }
   if (state.upstream) {
-    await runGit(root, [...auth, "push"], { timeout: NETWORK_TIMEOUT });
+    await runGit(root, ["push"], { timeout: NETWORK_TIMEOUT, auth });
   } else {
     // First push of a new branch — set the upstream to origin.
-    await runGit(root, [...auth, "push", "-u", "origin", state.branch], { timeout: NETWORK_TIMEOUT });
+    await runGit(root, ["push", "-u", "origin", state.branch], { timeout: NETWORK_TIMEOUT, auth });
   }
   return getState(root);
 }
@@ -1095,10 +1162,10 @@ async function diffFilesForRange(root: string, range: string): Promise<CompareFi
 export async function compareBranches(root: string, base: string, compare: string): Promise<CompareResult> {
   // Validate both refs up front for a friendly error.
   for (const ref of [base, compare]) {
+    assertRef(ref);
     try {
       await runGit(root, ["rev-parse", "--verify", "--quiet", ref + "^{commit}"]);
     } catch {
-      const { GitError } = await import("./git");
       throw new GitError(`Unknown branch or ref: ${ref}`, null, "");
     }
   }
@@ -1132,6 +1199,8 @@ export async function compareBranches(root: string, base: string, compare: strin
 
 // Unified diff for one file between two branches (three-dot, like a PR view).
 export async function compareFileDiff(root: string, base: string, compare: string, file: string): Promise<string> {
+  assertRef(base);
+  assertRef(compare);
   return runGit(root, ["diff", "--no-color", `${base}...${compare}`, "--", file]);
 }
 
@@ -1139,6 +1208,7 @@ export async function compareFileDiff(root: string, base: string, compare: strin
 // work this branch introduces. Falls back to the branch's own recent history
 // when it *is* the base.
 export async function branchCommits(root: string, branch: string): Promise<BranchCommits> {
+  assertRef(branch, "branch name");
   const base = await defaultBaseRef(root);
   const sameAsBase = base !== null && (base === branch || base.endsWith("/" + branch));
   const range = base && !sameAsBase ? `${base}..${branch}` : branch;

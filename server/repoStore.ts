@@ -25,10 +25,19 @@ export interface AutoCommitConfig {
   lastResult?: string; // human-readable outcome of the last attempt
 }
 
+// Where a repo was cloned from, read off its `origin` remote. Lets the picker
+// group repos by Azure DevOps project. null = origin isn't Azure DevOps.
+export interface RepoOrigin {
+  org: string;
+  project: string;
+  repo: string;
+}
+
 export interface StoredRepo {
   root: string;
   name: string;
   addedAt: string;
+  origin?: RepoOrigin | null;
   autoCommit?: AutoCommitConfig;
 }
 
@@ -85,6 +94,14 @@ export async function addRepo(root: string, name: string): Promise<StoreData> {
   d.lastOpened = root;
   await write(d);
   return d;
+}
+
+export async function setOrigin(root: string, origin: RepoOrigin | null): Promise<void> {
+  const d = await read();
+  const repo = d.repos.find((r) => r.root === root);
+  if (!repo) return;
+  repo.origin = origin;
+  await write(d);
 }
 
 export async function setLastOpened(root: string): Promise<StoredRepo | null> {
