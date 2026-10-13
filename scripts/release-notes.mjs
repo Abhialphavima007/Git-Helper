@@ -1,6 +1,7 @@
-// Prints the CHANGELOG.md section for a tag (e.g. v0.4.0) as GitHub Release
-// notes, with a short download hint appended. Used by the release workflow.
-//   node scripts/release-notes.mjs v0.4.0 > release-notes.md
+// Prints the GitHub Release notes for a tag (e.g. v0.4.1): the matching
+// CHANGELOG.md section plus a download table with direct links per device.
+// Used by the release workflow:
+//   node scripts/release-notes.mjs v0.4.1 > release-notes.md
 
 import { readFileSync, existsSync } from "node:fs";
 
@@ -9,6 +10,17 @@ if (!tag) {
   console.error("usage: node scripts/release-notes.mjs <tag>");
   process.exit(1);
 }
+const version = tag.replace(/^v/, "");
+
+// Where the installers live: the repo this runs in, else the publish target
+// from desktop/package.json (local runs).
+let repo = process.env.GITHUB_REPOSITORY;
+if (!repo) {
+  const pkg = JSON.parse(readFileSync("desktop/package.json", "utf8"));
+  const gh = (pkg.build?.publish || []).find((p) => p.provider === "github");
+  repo = gh ? `${gh.owner}/${gh.repo}` : "";
+}
+const download = (file) => `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(file)}`;
 
 let body = "";
 if (existsSync("CHANGELOG.md")) {
@@ -20,10 +32,20 @@ if (existsSync("CHANGELOG.md")) {
     body = lines.slice(start + 1, end).join("\n").trim();
   }
 }
-if (!body) body = `Desktop installers for Git Helper ${tag}.`;
 
-process.stdout.write(
-  body +
-    "\n\n**Windows:** Git-Helper-Setup-*.exe · **macOS (Intel & Apple Silicon):** Git-Helper-*-universal.dmg\n" +
-    "Unsigned builds — see desktop/README.md for the one-time SmartScreen / Gatekeeper step.\n"
-);
+const exe = `Git-Helper-Setup-${version}.exe`;
+const dmg = `Git-Helper-${version}-universal.dmg`;
+
+const downloads = `## Download / update
+
+| Your device | Download | Then |
+|---|---|---|
+| Windows 10 / 11 (64-bit, Intel/AMD or ARM) | [${exe}](${download(exe)}) | Run it. It installs over an existing Git Helper; your repositories, saved projects and settings are kept. |
+| macOS (Intel & Apple Silicon, one file) | [${dmg}](${download(dmg)}) | Open it, drag Git Helper to Applications, replace the old copy. |
+| Browser (nothing to install) | Hosted app on Vercel | Updates on its own. |
+
+**Already have Git Helper?** Download the same file as a new install and run it — that is the update. Nothing to uninstall first.
+
+The builds are not code-signed, so on first launch: **Windows** SmartScreen → *More info* → *Run anyway*; **macOS** → right-click the app → *Open* → *Open*. Details in [desktop/README.md](https://github.com/${repo}/blob/main/desktop/README.md).`;
+
+process.stdout.write([body, downloads].filter(Boolean).join("\n\n") + "\n");

@@ -1,6 +1,11 @@
 # Changelog
 
-## v0.4.0 — 2026-10-13
+## v0.4.1 — 2026-10-13
+
+Everything from v0.4.0 (which shipped without its installers — the pipeline published from two runners at once), plus the pipeline fix.
+
+### Release pipeline
+- Builds on both runners, then publishes a single release with every installer; notes come from this file with direct download links per device.
 
 ### Security
 - Local API answers only the app's own window: launch token + cookie, Host / Origin / Sec-Fetch-Site checks, JSON-only bodies, request size limit.
@@ -28,3 +33,7 @@
 - Files inside new folders are listed individually (and show in history).
 - Disconnecting Azure no longer closes the open local repository.
 - Repos cloned with different casing of the organization name are grouped together.
+
+## v0.4.0 — 2026-10-13
+
+Superseded by v0.4.1: the release was created twice and the installers were split between the two copies. Changes are listed under v0.4.1.
