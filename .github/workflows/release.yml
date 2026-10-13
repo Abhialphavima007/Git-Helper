@@ -1,10 +1,13 @@
-# Builds the desktop installers on real Windows and macOS machines and
-# publishes them to the repo's GitHub Releases page, so users just download.
+# Builds the desktop installers on real Windows and macOS machines, then
+# publishes them together as ONE GitHub Release, so users just download.
 #
 # To ship a release:
-#   1. (optional) bump "version" in desktop/package.json
-#   2. git tag v0.1.0 && git push origin v0.1.0   (tag = v + that version)
+#   1. bump "version" in desktop/package.json (and add a CHANGELOG.md entry), commit
+#   2. git tag v0.4.0 && git push origin v0.4.0   (tag = v + that version)
 # ~10 minutes later the installers appear at .../releases/latest.
+#
+# Re-run for an existing tag (e.g. a release that lost its files): Actions →
+# "Release desktop app" → Run workflow → enter the tag. Files are replaced.
 
 name: Release desktop app
 
@@ -12,9 +15,14 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish, e.g. v0.4.0"
+        required: true
 
 permissions:
-  contents: write # electron-builder uploads the installers to the Release
+  contents: write # the publish job creates the Release and uploads the installers
 
 jobs:
   build:
@@ -27,6 +35,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -42,8 +52,47 @@ jobs:
         run: npm ci
         working-directory: desktop
 
-      - name: Build installer and publish to GitHub Releases
-        run: npx electron-builder --publish always
+      # Build only — publishing from two runners at once creates two Releases
+      # with the files split between them. One job below publishes everything.
+      - name: Build installer
+        run: npx electron-builder --publish never
         working-directory: desktop
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installers-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/release-notes.mjs "${{ inputs.tag || github.ref_name }}" > release-notes.md
+
+      - name: Create or update the Release and upload every installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ls -la installers
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Git Helper $TAG" --notes-file release-notes.md
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Git Helper $TAG" --notes-file release-notes.md
+          fi
+          gh release upload "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --clobber
