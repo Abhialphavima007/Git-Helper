@@ -19,16 +19,16 @@
     "mcp:install": "node scripts/build-mcp.mjs && node scripts/install-mcp.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
+    "@anthropic-ai/sdk": "^0.133.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@tanstack/react-query": "^5.51.11",
+    "@tanstack/react-query": "^5.104.1",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.24.1",
-    "tsx": "^4.16.2",
-    "zod": "^4.4.3"
+    "tsx": "^4.23.15",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -37,9 +37,9 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.19",
-    "esbuild": "^0.28.0",
-    "marked": "^18.0.6",
+    "autoprefixer": "^10.6.1",
+    "esbuild": "^0.28.2",
+    "marked": "^18.1.0",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
     "typescript": "^5.5.3",
